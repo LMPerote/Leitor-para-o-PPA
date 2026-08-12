@@ -1,0 +1,10 @@
+# Extrator de Indicadores de Compromisso (.docx -> .xlsx)
+# Instalação:  pip install -r requirements.txt
+
+python-docx>=1.1.0    # leitura dos arquivos .docx (parágrafos e tabelas)
+pandas>=2.0.0         # consolidação dos registros em tabela
+openpyxl>=3.1.0       # gravação e formatação do arquivo .xlsx
+tqdm>=4.66.0          # barra de progresso do processamento em lote
+
+# Somente para rodar os testes (opcional):
+# pytest>=8.0.0
