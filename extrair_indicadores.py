@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Extrai fichas de Indicadores de Compromisso (.docx) para uma planilha Excel.
+"""Extrai fichas do PPA (.docx) para planilhas Excel consolidadas.
 
-Cada arquivo Word da pasta de entrada gera exatamente UMA linha na planilha.
+A pasta de entrada pode misturar os dois tipos de ficha; o tipo de cada
+documento é identificado automaticamente e cada arquivo Word vira exatamente
+UMA linha na planilha do seu tipo:
+
+* "VÍNCULO DO INDICADOR DE COMPROMISSO" -> ``Indicadores.xlsx``
+* "VÍNCULO DA INICIATIVA"               -> ``Iniciativas.xlsx``
 
 Exemplos de uso:
 
     # Processa todos os .docx da pasta (inclusive subpastas)
-    python extrair_indicadores.py -e ./documentos -s ./indicadores.xlsx
+    python extrair_indicadores.py -e ./documentos -s ./saida
 
     # Sem varrer subpastas, unindo listas com ponto e vírgula, e gerando CSV
-    python extrair_indicadores.py -e ./documentos --sem-recursao --separador ";" --csv
+    python extrair_indicadores.py -e ./documentos --sem-recursao --separador ponto-virgula --csv
 
     # Inspeciona a estrutura de um arquivo (útil para ajustar o mapa de campos)
     python extrair_indicadores.py --inspecionar ./documentos/ficha.docx
@@ -24,6 +29,8 @@ import time
 from pathlib import Path
 
 from extrator import __version__, listar_documentos, montar_dataframe, processar_lote
+from extrator.modelos import MODELOS, MODELOS_POR_CODIGO
+from extrator.pipeline import Estatisticas
 from extrator.planilha import salvar_csv, salvar_excel
 
 try:  # A barra de progresso é opcional: sem tqdm, usa um contador simples.
@@ -34,6 +41,7 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger("extrator")
 
 SEPARADORES = {"quebra": "\n", "ponto-virgula": "; ", "barra": " | "}
+LARGURA_RELATORIO = 66
 
 
 def configurar_log(arquivo_log: Path | None, verboso: bool) -> None:
@@ -59,12 +67,15 @@ def configurar_log(arquivo_log: Path | None, verboso: bool) -> None:
 
 
 def inspecionar(caminho: Path) -> int:
-    """Imprime seções, tabelas e células de um documento (modo diagnóstico)."""
+    """Imprime tipo, seções, tabelas e células de um documento (diagnóstico)."""
     from extrator import ler_documento
-    from extrator.parser import eh_rotulo
+    from extrator.parser import classificar, eh_rotulo
 
     documento = ler_documento(str(caminho))
-    print(f"# Documento: {caminho.name}\n")
+    modelo = classificar(documento)
+    print(f"# Documento: {caminho.name}")
+    print(f"# Tipo detectado: {modelo.rotulo if modelo else 'NÃO RECONHECIDO'}\n")
+
     for no in documento.nos:
         if not no.texto:
             continue
@@ -76,13 +87,16 @@ def inspecionar(caminho: Path) -> int:
         marca = "RÓTULO" if eh_rotulo(no.texto) else "valor "
         texto = no.texto.replace("\n", " ⏎ ")
         texto = texto if len(texto) <= 110 else texto[:107] + "..."
-        print(f"[{no.secao:<15}] {marca} {origem:<24} {texto}")
+        print(f"[{no.secao:<22}] {marca} {origem:<24} {texto}")
     return 0
 
 
 def montar_argumentos() -> argparse.ArgumentParser:
     analisador = argparse.ArgumentParser(
-        description="Consolida fichas de Indicadores de Compromisso (.docx) em um Excel.",
+        description=(
+            "Consolida fichas do PPA (.docx) em Indicadores.xlsx e Iniciativas.xlsx, "
+            "identificando o tipo de cada documento automaticamente."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -93,8 +107,8 @@ def montar_argumentos() -> argparse.ArgumentParser:
         "-s",
         "--saida",
         type=Path,
-        default=Path("indicadores_consolidados.xlsx"),
-        help="Arquivo .xlsx de saída (padrão: indicadores_consolidados.xlsx).",
+        default=Path("."),
+        help="Pasta onde gravar as planilhas (padrão: pasta atual).",
     )
     analisador.add_argument(
         "--sem-recursao",
@@ -108,7 +122,7 @@ def montar_argumentos() -> argparse.ArgumentParser:
         "'quebra' (padrão), 'ponto-virgula', 'barra' ou um texto literal.",
     )
     analisador.add_argument(
-        "--csv", action="store_true", help="Gera também um .csv com os mesmos dados."
+        "--csv", action="store_true", help="Gera também um .csv de cada planilha."
     )
     analisador.add_argument(
         "--limite",
@@ -161,9 +175,7 @@ def main(argumentos: list[str] | None = None) -> int:
 
     inicio = time.perf_counter()
     barra = (
-        tqdm(total=len(arquivos), unit="doc", desc="Extraindo", ncols=88)
-        if tqdm
-        else None
+        tqdm(total=len(arquivos), unit="doc", desc="Extraindo", ncols=88) if tqdm else None
     )
     try:
         registros, estatisticas = processar_lote(
@@ -173,47 +185,56 @@ def main(argumentos: list[str] | None = None) -> int:
         if barra:
             barra.close()
 
-    quadro = montar_dataframe(registros)
-    salvar_excel(quadro, opcoes.saida)
-    if opcoes.csv:
-        salvar_csv(quadro, opcoes.saida.with_suffix(".csv"))
+    # Uma planilha por tipo de ficha. São geradas mesmo quando vazias, para
+    # que a saída do aplicativo seja sempre previsível.
+    destinos: dict[str, Path] = {}
+    for modelo in MODELOS:
+        quadro = montar_dataframe(registros[modelo.codigo], modelo)
+        destino = opcoes.saida / modelo.arquivo_saida
+        salvar_excel(quadro, destino, modelo)
+        destinos[modelo.codigo] = destino
+        if opcoes.csv:
+            salvar_csv(quadro, destino.with_suffix(".csv"))
 
-    imprimir_relatorio(estatisticas, opcoes.saida, time.perf_counter() - inicio)
-    return 0 if estatisticas.erros == 0 else 3
+    imprimir_relatorio(estatisticas, destinos, time.perf_counter() - inicio)
+    return 0 if estatisticas.total_ignorados == 0 else 3
 
 
-def imprimir_relatorio(estatisticas, saida: Path, duracao: float) -> None:
-    """Resumo final do lote."""
-    linhas = [
-        "",
-        "=" * 62,
-        "RELATÓRIO DE EXTRAÇÃO",
-        "=" * 62,
-        f"Arquivos encontrados .......: {estatisticas.total}",
-        f"Processados com sucesso ....: {estatisticas.sucesso}",
-        f"  - completos ..............: {estatisticas.sucesso - estatisticas.com_pendencias}",
-        f"  - com campos pendentes ...: {estatisticas.com_pendencias}",
-        f"Falhas de leitura ..........: {estatisticas.erros}",
-        f"Tempo total ................: {duracao:.1f}s",
-        f"Planilha gerada ............: {saida.resolve()}",
+def imprimir_relatorio(
+    estatisticas: Estatisticas, destinos: dict[str, Path], duracao: float
+) -> None:
+    """Resumo final do lote, por tipo de ficha."""
+    regua = "=" * LARGURA_RELATORIO
+    linhas = ["", regua, "RELATÓRIO DE EXTRAÇÃO", regua]
+    linhas.append(f"Arquivos encontrados .......: {estatisticas.total}")
+
+    for modelo in MODELOS:
+        quantidade = estatisticas.processados.get(modelo.codigo, 0)
+        pendentes = estatisticas.com_pendencias.get(modelo.codigo, 0)
+        linhas.append(f"{quantidade} arquivos de {modelo.rotulo} processados.")
+        if pendentes:
+            linhas.append(f"  - {pendentes} com algum campo não localizado.")
+        linhas.append(f"  - planilha: {destinos[modelo.codigo].resolve()}")
+
+    linhas.append(f"{estatisticas.total_ignorados} arquivos ignorados ou com erro.")
+    linhas += [
+        f"  - {ocorrencia.arquivo}: {ocorrencia.motivo}"
+        for ocorrencia in estatisticas.ignorados
     ]
+    linhas.append(f"Tempo total ................: {duracao:.1f}s")
 
-    if estatisticas.campos_ausentes:
-        linhas.append("-" * 62)
-        linhas.append("Campos mais ausentes (rótulo não localizado no documento):")
-        mais_ausentes = sorted(
-            estatisticas.campos_ausentes.items(), key=lambda item: -item[1]
-        )[:10]
+    for codigo, ausentes in estatisticas.campos_ausentes.items():
+        if not ausentes:
+            continue
+        linhas.append("-" * LARGURA_RELATORIO)
+        linhas.append(
+            f"Campos mais ausentes em {MODELOS_POR_CODIGO[codigo].rotulo} "
+            "(rótulo não localizado no documento):"
+        )
+        mais_ausentes = sorted(ausentes.items(), key=lambda item: -item[1])[:10]
         linhas += [f"  {contagem:>5}x  {coluna}" for coluna, contagem in mais_ausentes]
 
-    if estatisticas.arquivos_com_erro:
-        linhas.append("-" * 62)
-        linhas.append("Arquivos com erro de leitura:")
-        linhas += [f"  - {nome}" for nome in estatisticas.arquivos_com_erro[:20]]
-        if len(estatisticas.arquivos_com_erro) > 20:
-            linhas.append(f"  ... e mais {len(estatisticas.arquivos_com_erro) - 20}.")
-
-    linhas.append("=" * 62)
+    linhas.append(regua)
     print("\n".join(linhas))
 
 

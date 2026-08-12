@@ -1,11 +1,13 @@
 """Testes do extrator.
 
 Os documentos de teste são gerados em tempo de execução com python-docx,
-cobrindo as três situações que aparecem no acervo real:
+cobrindo as situações que aparecem no acervo real:
 
+* os dois tipos de ficha (Indicador de Compromisso e Iniciativa);
 * layout vertical  (rótulo em uma linha, valor na linha de baixo);
 * layout horizontal (rótulo à esquerda, valor à direita);
-* layout em parágrafos com "Rótulo: valor" na mesma linha.
+* layout em parágrafos com "Rótulo: valor" na mesma linha;
+* arquivo corrompido e arquivo de tipo não reconhecido.
 
 Execute com:  pytest -q
 """
@@ -21,10 +23,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from extrator import ler_documento, montar_dataframe, processar_lote  # noqa: E402
-from extrator.parser import Extrator, eh_rotulo  # noqa: E402
+from extrator.modelos import MODELOS_POR_CODIGO  # noqa: E402
+from extrator.parser import Extrator, classificar, eh_rotulo  # noqa: E402
 from extrator.pipeline import listar_documentos  # noqa: E402
 from extrator.planilha import LIMITE_CELULA, salvar_excel, sanitizar  # noqa: E402
 from extrator.texto import chave, esta_marcado  # noqa: E402
+
+INDICADOR = MODELOS_POR_CODIGO["INDICADOR"]
+INICIATIVA = MODELOS_POR_CODIGO["INICIATIVA"]
 
 
 # ---------------------------------------------------------------------------
@@ -47,14 +53,15 @@ def _tabela_horizontal(documento, pares: list[tuple[str, str]]) -> None:
 
 def _tabela_grade(documento, linhas: list[list[str]]) -> None:
     """Tabela com cabeçalhos na primeira linha e valores nas seguintes."""
-    tabela = documento.add_table(rows=len(linhas), cols=len(linhas[0]))
+    colunas = max(len(linha) for linha in linhas)
+    tabela = documento.add_table(rows=len(linhas), cols=colunas)
     for l, linha in enumerate(linhas):
         for c, texto in enumerate(linha):
             tabela.cell(l, c).text = texto
 
 
-def criar_ficha_completa(destino: Path) -> Path:
-    """Ficha no layout padrão (misto vertical/horizontal)."""
+def criar_ficha_indicador(destino: Path) -> Path:
+    """Ficha de Indicador no layout padrão (misto vertical/horizontal)."""
     documento = docx.Document()
 
     _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
@@ -98,10 +105,7 @@ def criar_ficha_completa(destino: Path) -> Path:
         documento,
         ["Fonte", "Órgão XPTO", "Meios de verificação", "Relatórios administrativos"],
     )
-    _tabela_grade(
-        documento,
-        [["Sigla do Órgão", "UO", "USP"], ["SJDH", "APG", "O16 GASEC"]],
-    )
+    _tabela_grade(documento, [["Sigla do Órgão", "UO", "USP"], ["SJDH", "APG", "O16 GASEC"]])
 
     _tabela_grade(
         documento,
@@ -109,10 +113,15 @@ def criar_ficha_completa(destino: Path) -> Path:
             ["DESAGREGAÇÃO TERRITORIAL", "", "", ""],
             ["Estado", "x", "Território de Identidade", ""],
             ["Fórmula de cálculo Territorial", "", "Unidade de Medida", ""],
-            ["Não se aplica", "", "Unidade", ""],
+            ["Fórmula territorial", "", "Unidade", ""],
             ["Memória de Cálculo", "", "", ""],
             ["Sem memória", "", "", ""],
-            ["Território de Identidade", "Memória de Cálculo Territorial", "Meta Territorial", ""],
+            [
+                "Território de Identidade",
+                "Memória de Cálculo Territorial",
+                "Meta Territorial",
+                "",
+            ],
             ["Metropolitano", "Soma regional", "10", ""],
             ["Recôncavo", "Soma regional", "5", ""],
             ["Outras possibilidades de Regionalização", "", "", ""],
@@ -150,8 +159,128 @@ def criar_ficha_completa(destino: Path) -> Path:
             ["Programa Especial A", "Soma", "12"],
         ],
     )
+
+    documento.save(destino)
+    return destino
+
+
+def criar_ficha_iniciativa(destino: Path) -> Path:
+    """Ficha de Iniciativa no layout padrão."""
+    documento = docx.Document()
+
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
     _tabela_vertical(
-        documento, ["Indicador(es) doPrograma Sensibilizado(s)", "Indicador A", "Indicador B"]
+        documento,
+        [
+            "Eixo",
+            "EIXO DA INICIATIVA",
+            "Programa",
+            "Programa da Iniciativa",
+            "Compromisso",
+            "Compromisso da iniciativa",
+            "Problema(s) vinculado(s) ao Compromisso",
+            "Problema da iniciativa",
+            "Causa(s) Crítica(s)",
+            "Causa A.\nCausa B.",
+            "Ação(ões) Crítica(s)",
+            "Ação 1.\nAção 2.",
+        ],
+    )
+    _tabela_grade(
+        documento,
+        [
+            [
+                "Proposta(s) de Escuta Social Associada(s) ao Compromisso",
+                "Status para atendimento",
+                "Justificativa(s)",
+            ],
+            ["Proposta A", "Atendida parcialmente", "-"],
+            ["Proposta B", "Não atendida", "Sem orçamento"],
+        ],
+    )
+
+    _tabela_vertical(documento, ["ATRIBUTOS DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Descrição",
+            "Descrição da iniciativa",
+            "Entrega(s) Vinculada(s)",
+            "Entrega 1\nEntrega 2",
+            "Responsável pela Iniciativa",
+        ],
+    )
+    _tabela_grade(
+        documento,
+        [
+            ["Sigla do Órgão", "UO", "USP", "Órgãos Parceiros"],
+            ["SJDH", "APG", "GASEC", "Parceiro A, Parceiro B"],
+        ],
+    )
+    _tabela_grade(
+        documento,
+        [
+            ["Fatores Críticos de Contexto da Iniciativa", ""],
+            ["Operacionais", "Fator operacional"],
+            ["Orçamentários/Financeiros", "Fator orçamentário"],
+            ["Institucionais ou políticos", "Fator institucional"],
+        ],
+    )
+    _tabela_grade(
+        documento,
+        [
+            [
+                "Estimativa dos recursos orçamentários/financeiros disponíveis para Iniciativa",
+                "",
+                "",
+            ],
+            ["Código da Fonte", "Nome da Fonte", "Montante em R$"],
+            ["100", "Tesouro Estadual", "R$ 2.400.000,00"],
+            ["Total dos Recursos", "", "R$ 2.400.000,00"],
+        ],
+    )
+    _tabela_vertical(
+        documento,
+        [
+            "Indicador de Compromisso Vinculado",
+            "Número de campanhas realizadas",
+            "Indicadores de Compromisso Sensibilizados",
+            "Indicador sensibilizado A",
+        ],
+    )
+    _tabela_grade(
+        documento,
+        [
+            [
+                "Etapa II – Programação Orçamentária - Ações orçamentárias vinculadas à Iniciativa",
+                "",
+                "",
+                "",
+            ],
+            ["Órgão", "UO", "Código da Ação Orçamentária", "Nome da Ação Orçamentária"],
+            ["SJDH", "APG", "4170", "Realização de ações de promoção"],
+        ],
+    )
+    _tabela_grade(
+        documento,
+        [
+            [
+                "Etapa II – Programação Orçamentária – Produtos das ações orçamentárias "
+                "vinculadas à Iniciativa",
+                "",
+                "",
+                "",
+                "",
+            ],
+            [
+                "Órgão",
+                "UO",
+                "Código da Ação Orçamentária",
+                "Código do Produto da Ação Orçamentária",
+                "Nome Produto da Ação Orçamentária",
+            ],
+            ["SJDH", "APG", "4170", "P1", "Ações de promoção realizadas"],
+        ],
     )
 
     documento.save(destino)
@@ -172,11 +301,22 @@ def criar_ficha_em_paragrafos(destino: Path) -> Path:
     return destino
 
 
+def criar_documento_desconhecido(destino: Path) -> Path:
+    """Um .docx válido que não é nenhuma das duas fichas."""
+    documento = docx.Document()
+    documento.add_paragraph("MEMORANDO INTERNO")
+    documento.add_paragraph("Este documento não é uma ficha do PPA.")
+    documento.save(destino)
+    return destino
+
+
 @pytest.fixture(scope="module")
 def pasta(tmp_path_factory) -> Path:
     destino = tmp_path_factory.mktemp("fichas")
-    criar_ficha_completa(destino / "ficha_completa.docx")
+    criar_ficha_indicador(destino / "ficha_indicador.docx")
+    criar_ficha_iniciativa(destino / "ficha_iniciativa.docx")
     criar_ficha_em_paragrafos(destino / "ficha_paragrafos.docx")
+    criar_documento_desconhecido(destino / "outro_documento.docx")
     (destino / "corrompido.docx").write_bytes(b"isto nao e um docx valido")
     (destino / "~$temporario.docx").write_bytes(b"lixo")
     (destino / "ignorar.txt").write_text("nao e docx")
@@ -184,9 +324,15 @@ def pasta(tmp_path_factory) -> Path:
 
 
 @pytest.fixture(scope="module")
-def valores(pasta: Path) -> dict[str, str]:
-    documento = ler_documento(str(pasta / "ficha_completa.docx"))
-    return Extrator().extrair(documento).valores
+def indicador(pasta: Path) -> dict[str, str]:
+    documento = ler_documento(str(pasta / "ficha_indicador.docx"))
+    return Extrator(INDICADOR).extrair(documento).valores
+
+
+@pytest.fixture(scope="module")
+def iniciativa(pasta: Path) -> dict[str, str]:
+    documento = ler_documento(str(pasta / "ficha_iniciativa.docx"))
+    return Extrator(INICIATIVA).extrair(documento).valores
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +348,7 @@ def test_chave_ignora_acentos_espacos_e_pontuacao():
 def test_reconhecimento_de_rotulos():
     assert eh_rotulo("Valor de referência")
     assert eh_rotulo("ATRIBUTOSDO INDICADOR DE COMPROMISSO")
+    assert eh_rotulo("Proposta(s) de Escuta Social Associada(s) ao Compromisso")
     assert not eh_rotulo("Semestral")
     assert not eh_rotulo("40")
 
@@ -212,7 +359,20 @@ def test_marcacao_de_caixa_de_selecao():
 
 
 # ---------------------------------------------------------------------------
-# Extração de campos
+# Classificação automática
+# ---------------------------------------------------------------------------
+def test_classificacao_por_secao_de_vinculo(pasta: Path):
+    def tipo(nome: str):
+        return classificar(ler_documento(str(pasta / nome)))
+
+    assert tipo("ficha_indicador.docx") is INDICADOR
+    assert tipo("ficha_iniciativa.docx") is INICIATIVA
+    assert tipo("ficha_paragrafos.docx") is INDICADOR  # vínculo em parágrafo
+    assert tipo("outro_documento.docx") is None
+
+
+# ---------------------------------------------------------------------------
+# Campos da ficha de INDICADOR
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     ("coluna", "esperado"),
@@ -221,114 +381,201 @@ def test_marcacao_de_caixa_de_selecao():
         ("Programa", "Programa de Teste"),
         ("Compromisso", "Compromisso de teste"),
         ("Problemas_Vinculados", "Problema de teste"),
-        ("Descricao", "Descrição do indicador"),
-        ("Formula_de_Calculo", "Somatório de X"),
-        ("Memoria_de_Calculo", "Memória detalhada"),
-        ("Unidade_de_Medida", "Unidade"),
-        ("Valor_de_Referencia", "6"),
-        ("Ano_de_Referencia", "2023"),
-        ("Valor_da_Meta", "40"),
-        ("Periodicidade_da_Apuracao", "Semestral"),
+        ("Atributos_Descricao", "Descrição do indicador"),
+        ("Formula_Calculo", "Somatório de X"),
+        ("Memoria_Calculo", "Memória detalhada"),
+        ("Unidade_Medida", "Unidade"),
+        ("Valor_Referencia", "6"),
+        ("Ano_Referencia", "2023"),
+        ("Valor_Meta", "40"),
+        ("Periodicidade_Apuracao", "Semestral"),
         ("Polaridade", "Positiva"),
         ("Classificacao", "Produto"),
         ("Fonte", "Órgão XPTO"),
-        ("Meios_de_Verificacao", "Relatórios administrativos"),
+        ("Meios_Verificacao", "Relatórios administrativos"),
         ("Responsavel_Sigla_Orgao", "SJDH"),
         ("Responsavel_UO", "APG"),
         ("Responsavel_USP", "O16 GASEC"),
-        ("Desagregacao_Estado", "Sim"),
-        ("Desagregacao_Territorio_Identidade", "Não"),
-        ("Formula_Calculo_Territorial", "Não se aplica"),
-        ("Unidade_Medida_Territorial", "Unidade"),
-        ("Memoria_Calculo_Territorial", "Sem memória"),
-        ("Outras_Possibilidades_Regionalizacao", "Não se aplica"),
-        ("Objetivo_Interpretacao_Uso", "Mede a evolução de X"),
-        ("Limitacoes_do_Indicador", "Não se aplica"),
-        ("Fragilidades_para_Apuracao", "Nenhuma"),
+        ("Info_Complementares_Objetivo", "Mede a evolução de X"),
+        ("Limitacoes_Indicador", "Não se aplica"),
+        ("Fragilidades_Apuracao", "Nenhuma"),
         ("Limitacoes_Meta_Operacionais", "Limitação operacional"),
         ("Limitacoes_Meta_Orcamentarias", "Limitação orçamentária"),
         ("Limitacoes_Meta_Institucionais", "Limitação institucional"),
         ("Possibilidade_Desagregacao_Populacional", "Sim, por sexo"),
     ],
 )
-def test_campos_simples(valores, coluna, esperado):
-    assert valores[coluna] == esperado
+def test_indicador_campos_simples(indicador, coluna, esperado):
+    assert indicador[coluna] == esperado
 
 
-def test_lista_permanece_em_uma_unica_celula(valores):
-    assert valores["Causas_Criticas"] == "Causa 1.\nCausa 2.\nCausa 3."
+def test_indicador_lista_permanece_em_uma_unica_celula(indicador):
+    assert indicador["Causas_Criticas"] == "Causa 1.\nCausa 2.\nCausa 3."
 
 
-def test_separador_configuravel(pasta: Path):
-    documento = ler_documento(str(pasta / "ficha_completa.docx"))
-    valores = Extrator(separador="; ").extrair(documento).valores
-    assert valores["Indicadores_Programa_Sensibilizado"] == "Indicador A; Indicador B"
+def test_indicador_desagregacao_territorial_consolidada(indicador):
+    territorial = indicador["Desagregacao_Territorial"]
+    assert "Estado: Sim" in territorial
+    assert "Território de Identidade: Não" in territorial
+    assert "Fórmula de cálculo Territorial: Fórmula territorial" in territorial
+    assert "Unidade de Medida: Unidade" in territorial
+    assert "Memória de Cálculo: Sem memória" in territorial
+    assert "Territórios de Identidade: Metropolitano\nRecôncavo" in territorial
+    assert "Meta Territorial: 10\n5" in territorial
+    assert "Outras possibilidades de Regionalização: Não se aplica" in territorial
 
 
-def test_tabela_territorial_agrupa_todas_as_linhas(valores):
-    assert valores["Territorios_de_Identidade"] == "Metropolitano\nRecôncavo"
-    assert valores["Metas_Territoriais"] == "10\n5"
-    # Valores repetidos entre territórios não são duplicados no texto final.
-    assert valores["Memoria_Calculo_Por_Territorio"] == "Soma regional"
-
-
-def test_programas_especiais_viram_texto_estruturado(valores):
-    assert valores["Programas_Especiais"] == (
+def test_indicador_programas_especiais(indicador):
+    assert indicador["Programas_Especiais"] == (
         "Nome do Programa: Programa Especial A | Memória de Cálculo: Soma | Meta: 12"
     )
 
 
+# ---------------------------------------------------------------------------
+# Campos da ficha de INICIATIVA
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("coluna", "esperado"),
+    [
+        ("Eixo", "EIXO DA INICIATIVA"),
+        ("Programa", "Programa da Iniciativa"),
+        ("Compromisso", "Compromisso da iniciativa"),
+        ("Problemas_Vinculados", "Problema da iniciativa"),
+        ("Causas_Criticas", "Causa A.\nCausa B."),
+        ("Acoes_Criticas", "Ação 1.\nAção 2."),
+        ("Atributos_Descricao", "Descrição da iniciativa"),
+        ("Entregas_Vinculadas", "Entrega 1\nEntrega 2"),
+        ("Responsavel_Sigla_Orgao", "SJDH"),
+        ("Responsavel_UO", "APG"),
+        ("Responsavel_USP", "GASEC"),
+        ("Orgaos_Parceiros", "Parceiro A, Parceiro B"),
+        ("Fatores_Criticos_Operacionais", "Fator operacional"),
+        ("Fatores_Criticos_Orcamentarios", "Fator orçamentário"),
+        ("Fatores_Criticos_Institucionais", "Fator institucional"),
+        ("Indicador_Compromisso_Vinculado", "Número de campanhas realizadas"),
+        ("Indicadores_Sensibilizados", "Indicador sensibilizado A"),
+    ],
+)
+def test_iniciativa_campos_simples(iniciativa, coluna, esperado):
+    assert iniciativa[coluna] == esperado
+
+
+def test_iniciativa_propostas_de_escuta_social(iniciativa):
+    linhas = iniciativa["Propostas_Escuta_Social"].split("\n")
+    assert len(linhas) == 2
+    assert linhas[0] == (
+        "Proposta(s) de Escuta Social Associada(s) ao Compromisso: Proposta A | "
+        "Status para atendimento: Atendida parcialmente | Justificativa(s): -"
+    )
+    assert "Justificativa(s): Sem orçamento" in linhas[1]
+
+
+def test_iniciativa_recursos_orcamentarios_incluem_o_total(iniciativa):
+    recursos = iniciativa["Recursos_Orcamentarios"].split("\n")
+    assert recursos[0] == (
+        "Código da Fonte: 100 | Nome da Fonte: Tesouro Estadual | "
+        "Montante em R$: R$ 2.400.000,00"
+    )
+    assert recursos[-1] == "Total dos Recursos: R$ 2.400.000,00"
+
+
+def test_iniciativa_acoes_e_produtos_orcamentarios(iniciativa):
+    assert iniciativa["Acoes_Orcamentarias_Vinculadas"] == (
+        "Órgão: SJDH | UO: APG | Código da Ação Orçamentária: 4170 | "
+        "Nome da Ação Orçamentária: Realização de ações de promoção"
+    )
+    produtos = iniciativa["Produtos_Acoes_Orcamentarias"]
+    assert "Código do Produto da Ação Orçamentária: P1" in produtos
+    assert "Nome Produto da Ação Orçamentária: Ações de promoção realizadas" in produtos
+
+
+def test_separador_configuravel(pasta: Path):
+    documento = ler_documento(str(pasta / "ficha_iniciativa.docx"))
+    valores = Extrator(INICIATIVA, separador="; ").extrair(documento).valores
+    assert valores["Acoes_Criticas"] == "Ação 1.; Ação 2."
+
+
+# ---------------------------------------------------------------------------
+# Layouts fora do padrão
+# ---------------------------------------------------------------------------
 def test_layout_em_paragrafos(pasta: Path):
     documento = ler_documento(str(pasta / "ficha_paragrafos.docx"))
-    valores = Extrator().extrair(documento).valores
+    valores = Extrator(INDICADOR).extrair(documento).valores
     assert valores["Eixo"] == "EIXO EM PARÁGRAFO"  # "Rótulo: valor" na mesma linha
     assert valores["Programa"] == "Programa em parágrafo"  # valor no parágrafo seguinte
-    assert valores["Descricao"] == "Indicador descrito em parágrafo"
+    assert valores["Atributos_Descricao"] == "Indicador descrito em parágrafo"
     assert valores["Fonte"] == "Órgão do parágrafo"
 
 
 def test_campos_ausentes_sao_reportados(pasta: Path):
     documento = ler_documento(str(pasta / "ficha_paragrafos.docx"))
-    resultado = Extrator().extrair(documento)
+    resultado = Extrator(INDICADOR).extrair(documento)
     assert "Polaridade" in resultado.nao_encontrados
     assert "Eixo" not in resultado.nao_encontrados
 
 
 # ---------------------------------------------------------------------------
-# Lote, resiliência e planilha
+# Lote, resiliência e planilhas
 # ---------------------------------------------------------------------------
 def test_listagem_ignora_temporarios_e_outras_extensoes(pasta: Path):
     nomes = {caminho.name for caminho in listar_documentos(pasta)}
-    assert nomes == {"ficha_completa.docx", "ficha_paragrafos.docx", "corrompido.docx"}
+    assert nomes == {
+        "ficha_indicador.docx",
+        "ficha_iniciativa.docx",
+        "ficha_paragrafos.docx",
+        "outro_documento.docx",
+        "corrompido.docx",
+    }
 
 
-def test_arquivo_corrompido_nao_interrompe_o_lote(pasta: Path):
+def test_lote_separa_por_tipo_e_nao_para_em_erros(pasta: Path):
     arquivos = listar_documentos(pasta)
     registros, estatisticas = processar_lote(arquivos, pasta)
 
-    assert len(registros) == len(arquivos)  # uma linha por arquivo, sempre
-    assert estatisticas.erros == 1
-    assert estatisticas.sucesso == 2
-    with_erro = next(r for r in registros if r["Nome_do_Arquivo"] == "corrompido.docx")
-    assert with_erro["Status"] == "ERRO_DE_LEITURA"
-    assert with_erro["Observacoes"]
+    assert estatisticas.total == len(arquivos)
+    assert estatisticas.processados["INDICADOR"] == 2  # tabelas + parágrafos
+    assert estatisticas.processados["INICIATIVA"] == 1
+    assert len(registros["INDICADOR"]) == 2
+    assert len(registros["INICIATIVA"]) == 1
+
+    # Corrompido e "não é ficha do PPA" ficam de fora, mas são reportados.
+    ignorados = {
+        ocorrencia.arquivo: ocorrencia.motivo for ocorrencia in estatisticas.ignorados
+    }
+    assert set(ignorados) == {"corrompido.docx", "outro_documento.docx"}
+    assert "erro de leitura" in ignorados["corrompido.docx"]
+    assert "tipo não reconhecido" in ignorados["outro_documento.docx"]
 
 
-def test_planilha_gerada_tem_uma_linha_por_arquivo(pasta: Path, tmp_path: Path):
+def test_planilhas_geradas_tem_uma_linha_por_arquivo(pasta: Path, tmp_path: Path):
     import openpyxl
 
     arquivos = listar_documentos(pasta)
     registros, _ = processar_lote(arquivos, pasta)
-    destino = tmp_path / "consolidado.xlsx"
-    salvar_excel(montar_dataframe(registros), destino)
 
-    planilha = openpyxl.load_workbook(destino)["Indicadores"]
-    assert planilha.max_row == len(arquivos) + 1  # + cabeçalho
-    assert planilha.cell(row=1, column=1).value == "Nome_do_Arquivo"
-    assert planilha.cell(row=1, column=1).font.bold
-    assert planilha.cell(row=2, column=1).alignment.wrap_text
-    assert planilha.cell(row=2, column=1).alignment.vertical == "top"
-    assert planilha.freeze_panes == "C2"
+    for modelo, esperado in ((INDICADOR, 2), (INICIATIVA, 1)):
+        destino = tmp_path / modelo.arquivo_saida
+        salvar_excel(montar_dataframe(registros[modelo.codigo], modelo), destino, modelo)
+
+        planilha = openpyxl.load_workbook(destino)[destino.stem]
+        assert planilha.max_row == esperado + 1  # + cabeçalho
+        assert planilha.max_column == len(modelo.colunas())
+        assert planilha.cell(row=1, column=1).value == "Nome_Arquivo"
+        assert planilha.cell(row=1, column=1).font.bold
+        assert planilha.cell(row=2, column=1).alignment.wrap_text
+        assert planilha.cell(row=2, column=1).alignment.vertical == "top"
+        assert planilha.freeze_panes == "C2"
+
+
+def test_planilha_vazia_ainda_tem_cabecalho(tmp_path: Path):
+    import openpyxl
+
+    destino = tmp_path / INICIATIVA.arquivo_saida
+    salvar_excel(montar_dataframe([], INICIATIVA), destino, INICIATIVA)
+
+    planilha = openpyxl.load_workbook(destino)[destino.stem]
+    assert planilha.max_row == 1
+    assert [celula.value for celula in planilha[1]] == INICIATIVA.colunas()
 
 
 def test_sanitizacao_para_o_excel():

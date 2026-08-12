@@ -1,4 +1,8 @@
-"""Geração da planilha Excel consolidada (uma linha por documento)."""
+"""Geração das planilhas Excel consolidadas (uma linha por documento).
+
+Cada modelo de ficha gera seu próprio arquivo (``Indicadores.xlsx`` e
+``Iniciativas.xlsx``), com as colunas definidas pelo modelo.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,7 @@ from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .campos import COLUNA_ARQUIVO, dicionario_de_campos, todas_as_colunas
+from .modelos import COLUNA_ARQUIVO, Modelo
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +51,9 @@ def sanitizar(valor: object) -> str:
     return texto
 
 
-def montar_dataframe(registros: list[dict[str, str]]) -> pd.DataFrame:
-    """Constrói o DataFrame final garantindo a ordem e a presença das colunas."""
-    colunas = todas_as_colunas()
+def montar_dataframe(registros: list[dict[str, str]], modelo: Modelo) -> pd.DataFrame:
+    """Constrói o DataFrame de um modelo, na ordem de colunas que ele define."""
+    colunas = modelo.colunas()
     quadro = pd.DataFrame(registros, columns=colunas, dtype="object")
     quadro = quadro.fillna("")
     for coluna in colunas:
@@ -98,18 +102,19 @@ def _formatar_aba(planilha, congelar: bool = True) -> None:
         )
 
 
-def salvar_excel(quadro: pd.DataFrame, destino: Path) -> None:
-    """Grava a planilha final com a aba de dados e o dicionário de campos."""
+def salvar_excel(quadro: pd.DataFrame, destino: Path, modelo: Modelo) -> None:
+    """Grava a planilha de um modelo: aba de dados + dicionário de campos."""
     destino.parent.mkdir(parents=True, exist_ok=True)
-    dicionario = pd.DataFrame(dicionario_de_campos())
+    dicionario = pd.DataFrame(modelo.dicionario())
+    aba = destino.stem[:31] or "Dados"  # o Excel limita o nome da aba a 31
 
     with pd.ExcelWriter(destino, engine="openpyxl") as escritor:
-        quadro.to_excel(escritor, sheet_name="Indicadores", index=False)
+        quadro.to_excel(escritor, sheet_name=aba, index=False)
         dicionario.to_excel(escritor, sheet_name="Dicionário", index=False)
-        _formatar_aba(escritor.book["Indicadores"])
+        _formatar_aba(escritor.book[aba])
         _formatar_aba(escritor.book["Dicionário"], congelar=False)
 
-    logger.info("Planilha gravada em %s", destino)
+    logger.info("Planilha gravada em %s (%d linha(s))", destino, len(quadro))
 
 
 def salvar_csv(quadro: pd.DataFrame, destino: Path) -> None:

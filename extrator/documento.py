@@ -12,6 +12,7 @@ O modelo produzido tem duas visões complementares:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import docx
@@ -22,17 +23,14 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table, _Cell
 from docx.text.paragraph import Paragraph
 
+from .modelos import SECOES
 from .texto import chave, limpar
 
-# Cabeçalhos que delimitam as grandes seções da ficha de indicador.
-# A comparação é feita pela chave canônica, então variações como
-# "ATRIBUTOSDO INDICADOR" (sem espaço) continuam sendo reconhecidas.
-SECOES: dict[str, str] = {
-    "vinculodoindicadordecompromisso": "VINCULO",
-    "atributosdoindicadordecompromisso": "ATRIBUTOS",
-    "desagregacaoterritorial": "TERRITORIAL",
-    "informacoescomplementares": "COMPLEMENTARES",
-}
+# Cabeçalhos que delimitam as grandes seções das fichas (de qualquer tipo: a
+# leitura acontece antes da classificação). A comparação é feita pela chave
+# canônica, então variações como "ATRIBUTOSDO INDICADOR" (sem espaço)
+# continuam sendo reconhecidas.
+_SECOES = tuple((re.compile(padrao), secao) for padrao, secao in SECOES)
 SECAO_INICIAL = "CABECALHO"
 
 
@@ -230,9 +228,13 @@ class _Leitor:
 
     # -- internos ---------------------------------------------------------
     def _atualizar_secao(self, texto: str) -> None:
-        nova = SECOES.get(chave(texto))
-        if nova:
-            self.secao = nova
+        canonica = chave(texto)
+        if not canonica:
+            return
+        for regex, secao in _SECOES:
+            if regex.fullmatch(canonica):
+                self.secao = secao
+                return
 
     def _novo_no(self, **kwargs) -> No:
         no = No(secao=self.secao, ordem=self.ordem, **kwargs)
