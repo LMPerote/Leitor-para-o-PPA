@@ -45,8 +45,28 @@ from extrator.aplicacao import (  # noqa: E402
 from extrator.relatorio import montar_relatorio  # noqa: E402
 
 TITULO = "Leitor para o PPA"
-ARQUIVO_PREFERENCIAS = Path(__file__).resolve().parent / "preferencias.json"
 NOME_DA_PASTA_PADRAO = "Planilhas PPA"
+
+
+def _caminho_preferencias() -> Path:
+    """Onde guardar as pastas escolhidas na última execução.
+
+    No executável gerado pelo PyInstaller (``--onefile``), o programa roda a
+    partir de uma pasta temporária que é apagada ao fechar — por isso as
+    preferências vão para a área do usuário. Rodando como script, ficam ao
+    lado do próprio código, o que mantém a pasta do projeto autocontida.
+    """
+    if getattr(sys, "frozen", False):
+        base = Path(os.getenv("LOCALAPPDATA") or Path.home()) / "LeitorPPA"
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:  # perfil sem permissão de escrita: segue sem memorizar
+            return base / "preferencias.json"
+        return base / "preferencias.json"
+    return Path(__file__).resolve().parent / "preferencias.json"
+
+
+ARQUIVO_PREFERENCIAS = _caminho_preferencias()
 
 # Mensagens trocadas entre a thread de extração e a janela.
 PROGRESSO, LOG, FIM, ERRO = "progresso", "log", "fim", "erro"

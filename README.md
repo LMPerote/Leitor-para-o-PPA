@@ -17,7 +17,31 @@ da respectiva coluna.
 
 ---
 
-## 1. Preparando a pasta e instalando
+## 1. O que o aplicativo faz
+
+Veja a tabela acima: aponte a pasta das fichas, receba as duas planilhas.
+Escolha abaixo como quer usar.
+
+## 2. Baixar o executável pronto (não precisa de Python)
+
+Para quem só quer usar o aplicativo, há um executável para Windows gerado
+automaticamente a cada atualização do código:
+
+**[Baixar LeitorPPA.exe](https://github.com/LMPerote/Leitor-para-o-PPA/releases/latest/download/LeitorPPA.exe)**
+
+Baixe, dê dois cliques e use — sem instalar Python, sem linha de comando. Esse
+link é fixo: aponta sempre para a versão mais recente. É o jeito mais simples de
+distribuir o aplicativo para outras pessoas.
+
+> A primeira abertura demora alguns segundos (o programa se descompacta em uma
+> pasta temporária); as seguintes são mais rápidas. O Windows pode exibir um
+> aviso do SmartScreen por ser um executável sem assinatura digital: clique em
+> *Mais informações* → *Executar assim mesmo*.
+
+Para gerar o executável você mesmo, dê dois cliques em `Gerar executavel.bat`
+(ele instala o PyInstaller e grava o resultado em `dist\LeitorPPA.exe`).
+
+## 3. Preparando a pasta e instalando (a partir do código)
 
 Requer **Python 3.10 ou superior** ([python.org/downloads](https://www.python.org/downloads/)
 — no instalador, marque *Add python.exe to PATH*).
@@ -47,7 +71,7 @@ documentos/
 > convertidos antes — no Word: *Salvar como → .docx*; em lote no Linux:
 > `libreoffice --headless --convert-to docx *.doc`.
 
-## 2. Rodando com dois cliques (janela gráfica)
+## 4. Rodando com dois cliques (janela gráfica)
 
 Dê **dois cliques em `Extrair PPA.bat`**. Na primeira vez ele instala as
 dependências sozinho; depois abre a janela do aplicativo:
@@ -67,7 +91,7 @@ conferir o resultado antes de rodar o acervo inteiro.
 
 No macOS/Linux, a mesma janela abre com `python interface.py`.
 
-## 3. Rodando pelo terminal
+## 5. Rodando pelo terminal
 
 ```bash
 python extrair_indicadores.py -e ./documentos -s ./saida
@@ -116,7 +140,7 @@ python extrair_indicadores.py -e ./documentos -s ./saida --limite 10 --csv --log
 python extrair_indicadores.py -e ./documentos -s ./saida --separador ponto-virgula
 ```
 
-## 4. As planilhas geradas
+## 6. As planilhas geradas
 
 Cada planilha tem a aba de dados (uma linha por arquivo) e a aba **Dicionário**,
 que descreve cada coluna. As duas são sempre geradas, mesmo que um dos tipos não
@@ -182,7 +206,7 @@ Total dos Recursos: R$ 2.400.000,00
 Arquivos corrompidos ou de tipo não reconhecido **não entram nas planilhas**:
 são listados no relatório final e no log, e **nunca interrompem o lote**.
 
-## 5. Como o parser funciona
+## 7. Como o parser funciona
 
 1. **Leitura estrutural** (`extrator/documento.py`): parágrafos e células são
    lidos na ordem do documento; tabelas viram uma grade que trata **células
@@ -224,14 +248,14 @@ python extrair_indicadores.py --inspecionar ./documentos/ficha.docx
 A saída mostra o tipo detectado e, para cada célula, a seção, se ela foi
 reconhecida como `RÓTULO` ou `valor`, e sua posição na tabela.
 
-## 6. Testes
+## 8. Testes
 
 ```bash
 pip install pytest
 pytest -q          # 66 testes: classificação, os dois modelos, erros e Excel
 ```
 
-## 7. Observações operacionais
+## 9. Observações operacionais
 
 * Desempenho de referência: ~35 documentos/segundo (≈2.000/minuto).
 * Textos acima do limite do Excel (32.767 caracteres por célula) são truncados
@@ -242,11 +266,13 @@ pytest -q          # 66 testes: classificação, os dois modelos, erros e Excel
   de quebra de linha, as quebras internas de uma célula do Word (várias causas
   na mesma célula) também são convertidas.
 
-## 8. Estrutura do projeto
+## 10. Estrutura do projeto
 
 ```
 Leitor-para-o-PPA/
+├── .github/workflows/         # build automático do .exe a cada push
 ├── Extrair PPA.bat            # atalho de dois cliques (Windows)
+├── Gerar executavel.bat       # gera o LeitorPPA.exe nesta máquina
 ├── interface.py               # janela gráfica (Tkinter)
 ├── extrair_indicadores.py     # CLI: argumentos, progresso, log e relatório
 ├── extrator/

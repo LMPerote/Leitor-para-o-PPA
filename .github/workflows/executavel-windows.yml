@@ -1,0 +1,76 @@
+name: Executável Windows
+
+# Gera o LeitorPPA.exe a cada mudança na main e o publica na aba Releases,
+# com link fixo de download — quem for usar não precisa de Python nem compilar.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch: # permite disparar manualmente pela aba Actions
+
+permissions:
+  contents: write # necessário para criar/atualizar a release
+
+jobs:
+  construir:
+    name: Compilar e publicar
+    runs-on: windows-latest
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Preparar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pytest
+
+      - name: Rodar os testes
+        run: python -m pytest testes -q
+
+      - name: Gerar o executável
+        run: >
+          python -m PyInstaller --onefile --windowed --noconfirm
+          --name LeitorPPA
+          --paths .
+          interface.py
+
+      - name: Conferir que o executável foi criado
+        run: |
+          if (-not (Test-Path dist/LeitorPPA.exe)) { throw "LeitorPPA.exe nao foi gerado" }
+          $tamanho = [math]::Round((Get-Item dist/LeitorPPA.exe).Length / 1MB, 1)
+          Write-Host "LeitorPPA.exe gerado com $tamanho MB"
+
+      - name: Guardar o executável na execução (Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: LeitorPPA-windows
+          path: dist/LeitorPPA.exe
+          retention-days: 30
+
+      # Release móvel "ultima-versao": link estável, sempre com o build mais novo.
+      - name: Publicar a versão mais recente
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ultima-versao --yes --cleanup-tag
+          gh release create ultima-versao dist/LeitorPPA.exe `
+            --title "Leitor para o PPA - versão mais recente" `
+            --notes "Executável para Windows, gerado automaticamente a partir do commit ${{ github.sha }}. Baixe o LeitorPPA.exe abaixo e dê dois cliques: não é preciso instalar Python."
+
+      # Tags v1.0, v1.1... viram releases fixas, para guardar versões antigas.
+      - name: Publicar release da tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create ${{ github.ref_name }} dist/LeitorPPA.exe
+          --title "Leitor para o PPA ${{ github.ref_name }}"
+          --generate-notes

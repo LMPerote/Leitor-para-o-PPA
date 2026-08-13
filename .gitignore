@@ -13,3 +13,8 @@ documentos/
 
 # Pastas memorizadas pela janela gráfica
 preferencias.json
+
+# Artefatos do PyInstaller
+build/
+dist/
+*.spec
