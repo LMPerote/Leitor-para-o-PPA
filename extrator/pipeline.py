@@ -33,7 +33,8 @@ class Estatisticas:
     #: código do modelo -> quantidade de arquivos processados.
     processados: dict[str, int] = field(default_factory=dict)
     #: código do modelo -> linhas geradas na planilha. Difere de
-    #: ``processados`` quando alguma ficha traz mais de um problema vinculado.
+    #: ``processados`` quando a ficha traz mais de um problema, causa crítica
+    #: ou ação crítica.
     linhas: dict[str, int] = field(default_factory=dict)
     #: código do modelo -> quantidade com algum campo não localizado.
     com_pendencias: dict[str, int] = field(default_factory=dict)
@@ -114,30 +115,73 @@ def processar_arquivo(
     return modelo, registro, None
 
 
-#: Coluna que define a granularidade da planilha: uma linha por problema.
+#: Colunas que definem a granularidade da planilha: uma linha por problema,
+#: causa crítica e ação crítica que se correspondem dentro da mesma ficha.
 COLUNA_PROBLEMA = "Problemas_Vinculados"
+COLUNA_CAUSA = "Causas_Criticas"
+COLUNA_ACAO = "Acoes_Criticas"
+COLUNAS_EXPANDIDAS: tuple[str, ...] = (COLUNA_PROBLEMA, COLUNA_CAUSA, COLUNA_ACAO)
+
+
+def _itens(registro: dict[str, str], coluna: str, separador: str) -> list[str]:
+    """Itens de uma célula que reúne vários (um por linha, no padrão da ficha)."""
+    valor = registro.get(coluna, "")
+    if not valor:
+        return []
+    return [parte.strip() for parte in valor.split(separador) if parte.strip()]
+
+
+def _item_na_posicao(itens: list[str], posicao: int) -> str:
+    """Item da posição pedida; passado o fim da lista, o último se repete.
+
+    É como a ficha se comporta: um problema que vale para várias causas críticas
+    aparece repetido nas linhas dessas causas. Confirmado contra a planilha de
+    vínculo já usada pela equipe — uma ficha com 4 problemas, 1 causa e 3 ações
+    vira P1/C1/A1, P2/C1/A2, P3/C1/A3 e P4/C1/A3.
+    """
+    if not itens:
+        return ""
+    if posicao < len(itens):
+        return itens[posicao]
+    return itens[-1]
 
 
 def expandir_por_problema(
     registro: dict[str, str], separador: str
 ) -> list[dict[str, str]]:
-    """Desdobra o registro em uma linha por problema vinculado.
+    """Desdobra o registro em uma linha por problema + causa + ação críticas.
 
-    A regra de negócio é "um problema por linha": se a ficha trouxer mais de um
-    problema — o que não deveria acontecer, mas acontece —, cada um vira uma
-    linha e as demais colunas se repetem. Ficha com um problema (ou nenhum)
-    continua gerando uma única linha, para que todo arquivo apareça na planilha.
+    A regra de negócio é "um por linha": cada linha traz um problema, uma causa
+    crítica e uma ação crítica que se correspondem, pareados pela ordem em que
+    aparecem na ficha. Quando uma das listas é menor que as outras, seu último
+    item se repete nas linhas restantes — nada é agrupado nem deduplicado, e o
+    mesmo problema aparece quantas vezes for preciso. As demais colunas se
+    repetem em todas as linhas da ficha.
+
+    Ficha com um único item de cada (ou nenhum) continua gerando uma linha só,
+    para que todo arquivo apareça na planilha.
     """
-    valor = registro.get(COLUNA_PROBLEMA, "")
-    if not valor or not separador:
+    if not separador:
         return [registro]
 
-    problemas = [parte.strip() for parte in valor.split(separador)]
-    problemas = [problema for problema in problemas if problema]
-    if len(problemas) <= 1:
+    listas = {coluna: _itens(registro, coluna, separador) for coluna in COLUNAS_EXPANDIDAS}
+    total = max(len(itens) for itens in listas.values())
+    if total <= 1:
         return [registro]
 
-    return [{**registro, COLUNA_PROBLEMA: problema} for problema in problemas]
+    return [
+        {
+            **registro,
+            **{
+                coluna: _item_na_posicao(listas[coluna], posicao)
+                for coluna in COLUNAS_EXPANDIDAS
+                # Coluna ausente no modelo (a ficha de Indicador não tem ações
+                # críticas) não é criada do nada.
+                if coluna in registro
+            },
+        }
+        for posicao in range(total)
+    ]
 
 
 def processar_lote(

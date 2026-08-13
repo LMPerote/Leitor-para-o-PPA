@@ -3,8 +3,8 @@
 Aplicação (com **janela gráfica** e também linha de comando) que varre uma pasta com **centenas/milhares** de
 fichas de planejamento governamental em Word (`.docx`), **identifica
 automaticamente o tipo de cada documento** e consolida tudo em **três planilhas
-Excel**, com **uma linha por problema vinculado** (na prática, uma linha por
-ficha: quase toda ficha tem um único problema):
+Excel**, com **uma linha por problema, causa crítica e ação crítica que se
+correspondem** dentro da mesma ficha:
 
 | Tipo do documento | Reconhecido por | Planilha gerada |
 |---|---|---|
@@ -154,13 +154,26 @@ apareça na pasta. Formatação aplicada: cabeçalho em **negrito** com fundo az
 escuro e texto branco, linha de cabeçalho congelada, filtro automático, largura de colunas
 ajustada e células com **quebra automática de texto** e alinhamento superior.
 
-### Uma linha por problema
+### Uma linha por problema, causa crítica e ação crítica
 
-A granularidade da planilha é o **problema vinculado ao compromisso**: se uma
-ficha trouxer mais de um problema, ela gera uma linha para cada um, repetindo
-todas as demais colunas. Ficha com um problema — o caso normal — continua
-gerando uma linha só, e nenhum arquivo deixa de aparecer na planilha, mesmo sem
-problema preenchido.
+A granularidade da planilha é a **trinca** problema + causa crítica + ação
+crítica: cada linha traz um de cada, pareados pela ordem em que aparecem na
+ficha. Uma ficha com 6 causas críticas gera 6 linhas, repetindo todas as demais
+colunas — inclusive o problema, quantas vezes for preciso. Nada é agrupado nem
+deduplicado.
+
+Quando uma das listas é menor que as outras, seu último item se repete nas
+linhas restantes. Uma ficha com 4 problemas, 1 causa e 3 ações gera:
+
+| linha | problema | causa crítica | ação crítica |
+|---|---|---|---|
+| 1 | P1 | C1 | A1 |
+| 2 | P2 | C1 | A2 |
+| 3 | P3 | C1 | A3 |
+| 4 | P4 | C1 | A3 |
+
+Ficha com um único item de cada — ou sem nenhum — continua gerando uma linha
+só, e nenhum arquivo deixa de aparecer na planilha.
 
 O relatório final avisa quando isso acontece (`N linhas na planilha`), e a
 coluna `Nome_Arquivo` repetida deixa a duplicação visível. Atenção ao contar:

@@ -1,4 +1,7 @@
-"""Geração das planilhas Excel consolidadas (uma linha por problema vinculado).
+"""Geração das planilhas Excel consolidadas.
+
+Cada linha traz um problema, uma causa crítica e uma ação crítica que se
+correspondem dentro da mesma ficha.
 
 Cada modelo de ficha gera seu próprio arquivo (``Indicadores.xlsx`` e
 ``Iniciativas.xlsx``), com as colunas definidas pelo modelo.
