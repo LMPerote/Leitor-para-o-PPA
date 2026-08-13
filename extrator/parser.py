@@ -189,6 +189,11 @@ class Extrator:
                 return valor, True
         elif forma == PRIMEIRA_LINHA:
             resto = no.texto.split("\n", 1)[1].strip()
+            if not campo.multiplo:
+                # Campo de valor único: só a primeira linha preenchida. Nas
+                # fichas de controle, a contagem vem seguida da lista de
+                # códigos, que não faz parte do valor.
+                resto = next((l.strip() for l in resto.split("\n") if l.strip()), "")
             if resto and not eh_rotulo(resto):
                 return resto, True
 

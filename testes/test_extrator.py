@@ -993,3 +993,39 @@ def test_variante_do_compromisso_gera_uma_linha_por_problema(tmp_path: Path):
         "Primeiro problema",
         "Segundo problema",
     ]
+
+
+def test_ficha_de_controle_redacoes_da_contagem(tmp_path: Path):
+    """As três redações do rótulo de contagem que existem no acervo."""
+    documento = docx.Document()
+    tabela = documento.add_table(rows=4, cols=1)
+    tabela.cell(0, 0).text = "NOME DO DIRETÓRIO DO COMPROMISSO (copiar P:\\Fichas): \nE10-MASH-C1"
+    # Com "Fichas de" no meio e a lista de códigos abaixo da contagem.
+    tabela.cell(1, 0).text = (
+        "Número de Fichas de INDICADORES DE COMPROMISSO:\n03 \ncód 1646\nCód 1647\n"
+    )
+    tabela.cell(2, 0).text = "Número de Fichas de INICIATIVAS: \n04\nCód 1646 IN 0001"
+    tabela.cell(3, 0).text = "PENDÊNCIAS E OBSERVAÇÕES \nFinalizado"
+    caminho = tmp_path / "controle_variante.docx"
+    documento.save(caminho)
+
+    valores = Extrator(CONTROLE).extrair(ler_documento(str(caminho))).valores
+    # Só a contagem entra; a lista de códigos abaixo não faz parte do valor.
+    assert valores["Qtd_Indicadores_Compromisso"] == "03"
+    assert valores["Qtd_Fichas_Iniciativas"] == "04"
+    assert valores["Nome_Diretorio_Compromisso"] == "E10-MASH-C1"
+    assert valores["Pendencias_Observacoes"] == "Finalizado"
+
+
+def test_ficha_de_controle_contagem_sem_dois_pontos(tmp_path: Path):
+    documento = docx.Document()
+    tabela = documento.add_table(rows=2, cols=2)
+    tabela.cell(0, 0).text = "NOME DO DIRETÓRIO DO COMPROMISSO: \nE1-ASGD-C9"
+    tabela.cell(1, 0).text = "N° de Fichas de INDICADORES \n 2\nE1- ASGD Indicador 1"
+    tabela.cell(1, 1).text = "N° de Fichas de INICIATIVAS: \n2"
+    caminho = tmp_path / "controle_sem_dois_pontos.docx"
+    documento.save(caminho)
+
+    valores = Extrator(CONTROLE).extrair(ler_documento(str(caminho))).valores
+    assert valores["Qtd_Indicadores_Compromisso"] == "2"
+    assert valores["Qtd_Fichas_Iniciativas"] == "2"

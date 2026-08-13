@@ -36,7 +36,7 @@ CAMPOS: tuple[Campo, ...] = (
     ),
     Campo(
         coluna="Nome_Digitador_Fiplan",
-        padroes=(r"nomedigitador[ao]s?fiplan", r"digitador[ao]fiplan"),
+        padroes=(r"nomedigitador[ao]?s?fiplan", r"digitador[ao]?fiplan"),
         descricao="Quem digitou as informações no Fiplan.",
     ),
     Campo(
@@ -46,12 +46,14 @@ CAMPOS: tuple[Campo, ...] = (
     ),
     Campo(
         coluna="Qtd_Indicadores_Compromisso",
-        padroes=(r"n?de?indicadoresdecompromisso", r"n?de?indicadores"),
+        # "N° de INDICADORES DE COMPROMISSO", "Número de Fichas de INDICADORES
+        # DE COMPROMISSO" e "N° de Fichas de INDICADORES" convivem no acervo.
+        padroes=(r"(n|numero)?de?(fichasde?)?indicadores(de?compromissos?)?",),
         descricao="Quantidade de fichas de Indicador de Compromisso na pasta.",
     ),
     Campo(
         coluna="Qtd_Fichas_Iniciativas",
-        padroes=(r"n?de?fichasde?iniciativas?", r"n?de?iniciativas?"),
+        padroes=(r"(n|numero)?de?(fichasde?)?iniciativas?",),
         descricao="Quantidade de fichas de Iniciativa na pasta.",
     ),
     Campo(
