@@ -149,7 +149,7 @@ python extrair_indicadores.py -e ./documentos -s ./saida --separador ponto-virgu
 Cada planilha tem a aba de dados (uma linha por arquivo) e a aba **Dicionário**,
 que descreve cada coluna. As duas são sempre geradas, mesmo que um dos tipos não
 apareça na pasta. Formatação aplicada: cabeçalho em **negrito** com fundo azul
-escuro e texto branco, painéis congelados, filtro automático, largura de colunas
+escuro e texto branco, linha de cabeçalho congelada, filtro automático, largura de colunas
 ajustada e células com **quebra automática de texto** e alinhamento superior.
 
 ### `Indicadores.xlsx`

@@ -564,7 +564,7 @@ def test_planilhas_geradas_tem_uma_linha_por_arquivo(pasta: Path, tmp_path: Path
         assert planilha.cell(row=1, column=1).font.bold
         assert planilha.cell(row=2, column=1).alignment.wrap_text
         assert planilha.cell(row=2, column=1).alignment.vertical == "top"
-        assert planilha.freeze_panes == "C2"
+        assert planilha.freeze_panes == "A2"  # só o cabeçalho; nenhuma coluna fixa
 
 
 def test_planilha_vazia_ainda_tem_cabecalho(tmp_path: Path):

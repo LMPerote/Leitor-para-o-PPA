@@ -96,7 +96,9 @@ def _formatar_aba(planilha, congelar: bool = True) -> None:
         )
 
     if congelar:
-        planilha.freeze_panes = "C2"
+        # "A2" congela apenas a linha de cabeçalho. Nenhuma coluna fica fixa:
+        # a rolagem horizontal corre livre por todas elas.
+        planilha.freeze_panes = "A2"
         planilha.auto_filter.ref = (
             f"A1:{get_column_letter(total_colunas)}{max(total_linhas, 1)}"
         )
