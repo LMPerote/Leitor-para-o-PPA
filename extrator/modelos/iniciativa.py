@@ -105,7 +105,12 @@ CAMPOS: tuple[Campo, ...] = (
     ),
     Campo(
         coluna="Fatores_Criticos_Orcamentarios",
-        padroes=(r"orcamentari[oa]s?financeir[oa]s?", r"orcamentari[oa]s?"),
+        # Há versões do modelo em que o rótulo é apenas "Financeiros".
+        padroes=(
+            r"orcamentari[oa]s?e?financeir[oa]s?",
+            r"orcamentari[oa]s?",
+            r"financeir[oa]s?",
+        ),
         secao="FATORES",
         descricao="Fatores críticos orçamentários/financeiros.",
     ),

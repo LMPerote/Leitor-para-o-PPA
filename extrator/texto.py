@@ -58,6 +58,47 @@ def chave(texto: str | None) -> str:
     return _NAO_ALFANUMERICO.sub("", sem_acentos(texto).lower())
 
 
+_PARENTESES = re.compile(r"\([^()]*\)")
+_PREFIXO_BLOCO = re.compile(r"^\s*bloco\s*[\dIVXivx]*\s*[:.\-–—]?\s*", re.IGNORECASE)
+
+
+def chaves(texto: str | None) -> tuple[str, ...]:
+    """Chaves candidatas do texto, da mais literal à mais tolerante.
+
+    Algumas versões do modelo numeram as seções e explicam os rótulos entre
+    parênteses — "Bloco 1: VÍNCULO DO INDICADOR DE COMPROMISSO",
+    "Compromisso (Objetivo do Compromisso)". A segunda chave remove esses
+    ornamentos.
+
+    >>> chaves("Bloco 1: VÍNCULO DO INDICADOR DE COMPROMISSO")[-1]
+    'vinculodoindicadordecompromisso'
+    >>> chaves("Compromisso (Objetivo do Compromisso)")[-1]
+    'compromisso'
+
+    Rótulos em que os parênteses fazem parte do nome continuam funcionando,
+    porque os padrões toleram o plural opcional:
+
+    >>> chaves("Causa(s) Crítica(s)")
+    ('causascriticas', 'causacritica')
+    """
+    if not texto:
+        return ()
+
+    principal = chave(texto)
+    resultado = [principal] if principal else []
+
+    simplificado = _PREFIXO_BLOCO.sub("", _PARENTESES.sub(" ", texto).strip())
+    alternativa = chave(simplificado)
+    if alternativa and alternativa not in resultado:
+        resultado.append(alternativa)
+    return tuple(resultado)
+
+
+def casa(regex, texto: str | None) -> bool:
+    """True se alguma chave candidata do texto casa integralmente com o regex."""
+    return any(regex.fullmatch(candidata) for candidata in chaves(texto))
+
+
 def esta_marcado(texto: str | None) -> bool:
     """Indica se o conteúdo de uma célula representa uma caixa marcada."""
     valor = limpar(texto)

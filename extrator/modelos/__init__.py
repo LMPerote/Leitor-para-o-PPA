@@ -8,7 +8,7 @@ em :data:`MODELOS`.
 
 from __future__ import annotations
 
-from . import indicador, iniciativa
+from . import controle, indicador, iniciativa
 from .base import (
     COLUNA_ARQUIVO,
     COLUNAS_AUDITORIA_FIM,
@@ -17,8 +17,10 @@ from .base import (
     Modelo,
 )
 
-#: Modelos reconhecidos, na ordem em que a classificação os testa.
-MODELOS: tuple[Modelo, ...] = (indicador.MODELO, iniciativa.MODELO)
+#: Modelos reconhecidos, na ordem em que a classificação os testa. A ficha de
+#: controle vem por último: ela é reconhecida por rótulos genéricos, então as
+#: fichas de indicador e de iniciativa precisam ter a primeira chance.
+MODELOS: tuple[Modelo, ...] = (indicador.MODELO, iniciativa.MODELO, controle.MODELO)
 
 MODELOS_POR_CODIGO: dict[str, Modelo] = {modelo.codigo: modelo for modelo in MODELOS}
 
@@ -60,6 +62,7 @@ ROTULOS_CONHECIDOS: tuple[str, ...] = (
     )
     + indicador.ROTULOS_ESTRUTURAIS
     + iniciativa.ROTULOS_ESTRUTURAIS
+    + controle.ROTULOS_ESTRUTURAIS
     + tuple(padrao for padrao, _ in SECOES)
 )
 

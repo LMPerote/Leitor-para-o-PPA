@@ -27,7 +27,7 @@ from docx.table import Table, _Cell
 from docx.text.paragraph import Paragraph
 
 from .modelos import SECOES
-from .texto import chave, limpar
+from .texto import chave, chaves, limpar
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,11 @@ class No:
     @property
     def chave(self) -> str:
         return chave(self.texto)
+
+    @property
+    def chaves(self) -> tuple[str, ...]:
+        """Chaves candidatas do texto (ver :func:`extrator.texto.chaves`)."""
+        return chaves(self.texto)
 
 
 @dataclass
@@ -235,11 +240,13 @@ class _Leitor:
 
     # -- internos ---------------------------------------------------------
     def _atualizar_secao(self, texto: str) -> None:
-        canonica = chave(texto)
-        if not canonica:
+        # O cabeçalho às vezes traz instruções logo abaixo, na mesma célula
+        # ("Bloco 3: DESAGREGAÇÃO TERRITORIAL / Desagregação regional? ...").
+        candidatas = chaves(texto) + chaves(texto.split("\n", 1)[0])
+        if not candidatas:
             return
         for regex, secao in _SECOES:
-            if regex.fullmatch(canonica):
+            if any(regex.fullmatch(candidata) for candidata in candidatas):
                 self.secao = secao
                 return
 

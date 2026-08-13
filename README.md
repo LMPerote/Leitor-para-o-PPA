@@ -2,7 +2,7 @@
 
 Aplicação (com **janela gráfica** e também linha de comando) que varre uma pasta com **centenas/milhares** de
 fichas de planejamento governamental em Word (`.docx`), **identifica
-automaticamente o tipo de cada documento** e consolida tudo em **duas planilhas
+automaticamente o tipo de cada documento** e consolida tudo em **três planilhas
 Excel**, com **uma linha por problema vinculado** (na prática, uma linha por
 ficha: quase toda ficha tem um único problema):
 
@@ -10,6 +10,7 @@ ficha: quase toda ficha tem um único problema):
 |---|---|---|
 | Indicador de Compromisso | seção `VÍNCULO DO INDICADOR DE COMPROMISSO` | `Indicadores.xlsx` |
 | Iniciativa | seção `VÍNCULO DA INICIATIVA` | `Iniciativas.xlsx` |
+| Ficha de Controle | `NOME DO DIRETÓRIO DO COMPROMISSO` | `Controles.xlsx` |
 
 Os dois tipos podem estar misturados na mesma pasta. Campos com vários itens
 (ex.: *Causa(s) Crítica(s)*, *Ação(ões) Crítica(s)*, propostas de escuta social,
@@ -193,6 +194,16 @@ Outras possibilidades de Regionalização: Não se aplica
 Quando a ficha lista territórios, entram também `Territórios de Identidade`,
 `Memória de Cálculo Territorial` e `Meta Territorial`.
 
+### `Controles.xlsx`
+
+A ficha de controle é a capa da pasta do compromisso: registra quem digitou no
+Fiplan, quando, quantas fichas de cada tipo existem e o que ficou pendente.
+
+`Nome_Arquivo`, `Caminho_Relativo`, `Nome_Diretorio_Compromisso`, `Eixo`,
+`Programa`, `Compromisso`, `Nome_Digitador_Fiplan`, `Data_Insercao_Fiplan`,
+`Qtd_Indicadores_Compromisso`, `Qtd_Fichas_Iniciativas`,
+`Pendencias_Observacoes`, `Status`, `Campos_Nao_Encontrados`, `Observacoes`.
+
 ### `Iniciativas.xlsx`
 
 `Nome_Arquivo`, `Caminho_Relativo`, `Eixo`, `Programa`, `Compromisso`,
@@ -239,10 +250,13 @@ são listados no relatório final e no log, e **nunca interrompem o lote**.
 4. **Casamento de rótulos por chave canônica**: o texto é reduzido a
    minúsculas, sem acentos, espaços ou pontuação. Assim
    `Indicador(es) doPrograma Sensibilizado(s)` (erro de digitação presente no
-   modelo real) casa com o rótulo esperado.
-5. **Resolução do valor**, nesta ordem: valor após `:` na própria célula →
-   primeira célula **à direita** que não seja outro rótulo → primeira célula
-   **abaixo**. Isso cobre os layouts vertical e horizontal sem depender da
+   modelo real) casa com o rótulo esperado. Uma segunda chave descarta
+   ornamentos das variantes do modelo — a numeração das seções
+   (`Bloco 1: VÍNCULO...`) e as explicações entre parênteses
+   (`Compromisso (Objetivo do Compromisso)`).
+5. **Resolução do valor**, nesta ordem: célula com apenas o rótulo (valor
+   **à direita** ou **abaixo**) → `Rótulo: valor` na mesma célula → rótulo na
+   primeira linha com o valor nas linhas seguintes. Isso cobre os layouts vertical e horizontal sem depender da
    posição fixa das tabelas.
 6. **Extratores dedicados** para o que foge desse padrão: caixas de seleção
    (`Estado [x] / Território de Identidade [ ]` → `Sim`/`Não`) e tabelas com
@@ -270,7 +284,7 @@ reconhecida como `RÓTULO` ou `valor`, e sua posição na tabela.
 
 ```bash
 pip install pytest
-pytest -q          # 66 testes: classificação, os dois modelos, erros e Excel
+pytest -q          # 75 testes: classificação, os dois modelos, erros e Excel
 ```
 
 ## 9. Observações operacionais
@@ -300,6 +314,7 @@ Leitor-para-o-PPA/
 │   │   ├── base.py            # Campo, Modelo e colunas de auditoria
 │   │   ├── indicador.py       # mapa de campos do Indicador de Compromisso
 │   │   ├── iniciativa.py      # mapa de campos da Iniciativa
+│   │   ├── controle.py        # mapa de campos da Ficha de Controle
 │   │   └── __init__.py        # registro dos modelos, seções e rótulos
 │   ├── documento.py           # leitura do .docx (parágrafos, tabelas, merges)
 │   ├── parser.py              # classificação e motor rótulo -> valor

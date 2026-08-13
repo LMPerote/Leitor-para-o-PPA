@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 from .documento import Documento, No, Tabela
 from .modelos import MODELOS, ROTULOS_CONHECIDOS, Campo, Modelo
-from .texto import chave, esta_marcado, juntar, limpar
+from .texto import casa, chave, chaves, esta_marcado, juntar, limpar
 
 logger = logging.getLogger(__name__)
 
@@ -40,16 +40,16 @@ SEPARADOR_DE_COLUNAS = " | "
 
 _REGEX_ROTULOS = re.compile("|".join(f"(?:{p})" for p in ROTULOS_CONHECIDOS))
 
+#: Formas de um texto anunciar um rótulo, da mais literal à mais tolerante.
+EXATO, EMBUTIDO, PRIMEIRA_LINHA = 0, 1, 2
+
 # Divisor "rótulo: valor" dentro de uma mesma célula/parágrafo (uma linha).
 _DIVISOR_INLINE = re.compile(r"^([^:\n]{2,80}?)\s*[:：]\s*(.+?)\s*(?:\n|$)")
 
 
 def eh_rotulo(texto: str) -> bool:
     """True se o texto é (apenas) um rótulo conhecido, e não um valor."""
-    canonica = chave(texto)
-    if not canonica:
-        return False
-    return _REGEX_ROTULOS.fullmatch(canonica) is not None
+    return casa(_REGEX_ROTULOS, texto)
 
 
 def classificar(documento: Documento) -> Modelo | None:
@@ -63,11 +63,10 @@ def classificar(documento: Documento) -> Modelo | None:
         for modelo in MODELOS
     ]
     for no in documento.nos:
-        canonica = no.chave
-        if not canonica:
+        if not no.texto:
             continue
         for modelo, regex in padroes:
-            if regex.fullmatch(canonica):
+            if casa(regex, no.texto) or casa(regex, no.texto.split("\n", 1)[0]):
                 return modelo
     return None
 
@@ -129,22 +128,20 @@ class Extrator:
         no arquivo (documento fora do padrão), cai para uma busca global —
         assim um cabeçalho ausente não zera todos os campos daquela seção.
 
-        Células que contêm *apenas* o rótulo têm prioridade sobre células no
-        formato "Rótulo: valor", pois são o layout padrão da ficha.
+        A prioridade entre as formas de casar segue o layout mais comum da
+        ficha: célula com *apenas* o rótulo, depois "Rótulo: valor" na mesma
+        célula, e por fim rótulo na primeira linha com o valor abaixo.
         """
-        regex = re.compile("|".join(f"(?:{p})" for p in campo.padroes))
-
-        def exato(no: No) -> bool:
-            return bool(no.chave and regex.fullmatch(no.chave))
-
-        def embutido(no: No) -> bool:
-            partes = _DIVISOR_INLINE.match(no.texto)
-            return bool(partes and regex.fullmatch(chave(partes.group(1))))
+        regex = self._regex(campo)
 
         def buscar(nos: list[No]) -> list[No]:
-            return [no for no in nos if exato(no)] + [
-                no for no in nos if not exato(no) and embutido(no)
-            ]
+            achados: list[list[No]] = [[], [], []]
+            for no in nos:
+                forma = self._forma_do_rotulo(regex, no.texto)
+                # EXATO é 0: comparar com None, senão o casamento mais forte some.
+                if forma is not None:
+                    achados[forma].append(no)
+            return [no for grupo in achados for no in grupo]
 
         documento = self.documento
         escopo = documento.nos_da_secao(campo.secao) if campo.secao else documento.nos
@@ -153,6 +150,26 @@ class Extrator:
             candidatos = buscar(documento.nos)
         return candidatos
 
+    def _regex(self, campo: Campo):
+        return re.compile("|".join(f"(?:{p})" for p in campo.padroes))
+
+    def _forma_do_rotulo(self, regex, texto: str) -> int | None:
+        """Como (e se) o texto anuncia este rótulo.
+
+        Devolve ``EXATO``, ``EMBUTIDO`` (Rótulo: valor), ``PRIMEIRA_LINHA``
+        (rótulo em cima, valor abaixo na mesma célula) ou ``None``.
+        """
+        if not texto:
+            return None
+        if casa(regex, texto):
+            return EXATO
+        partes = _DIVISOR_INLINE.match(texto)
+        if partes and casa(regex, partes.group(1)):
+            return EMBUTIDO
+        if "\n" in texto and casa(regex, texto.split("\n", 1)[0]):
+            return PRIMEIRA_LINHA
+        return None
+
     def _extrair_por_rotulo(self, campo: Campo) -> tuple[str, bool]:
         candidatos = self._candidatos(campo)
         if not candidatos:
@@ -160,11 +177,16 @@ class Extrator:
 
         indice = min(campo.ocorrencia, len(candidatos) - 1)
         no = candidatos[indice]
+        forma = self._forma_do_rotulo(self._regex(campo), no.texto)
 
-        # (a) valor embutido na própria célula ("Fonte: SEI").
-        partes = _DIVISOR_INLINE.match(no.texto)
-        if partes and not eh_rotulo(partes.group(2)):
-            return partes.group(2), True
+        if forma == EMBUTIDO:
+            valor = _DIVISOR_INLINE.match(no.texto).group(2)
+            if not eh_rotulo(valor):
+                return valor, True
+        elif forma == PRIMEIRA_LINHA:
+            resto = no.texto.split("\n", 1)[1].strip()
+            if resto and not eh_rotulo(resto):
+                return resto, True
 
         if no.tipo == "celula":
             tabela = self.documento.tabelas[no.tabela]
@@ -232,11 +254,11 @@ class Extrator:
         ancora = re.compile(padroes[0])
         restantes = [re.compile(padrao) for padrao in padroes[1:]]
         for no in self.documento.nos_da_secao(secao):
-            if no.tipo != "celula" or not ancora.fullmatch(no.chave):
+            if no.tipo != "celula" or not casa(ancora, no.texto):
                 continue
             tabela = self.documento.tabelas[no.tabela]
-            chaves = [chave(texto) for _, texto in tabela.linha_de_celulas(no.linha)]
-            if all(any(regex.fullmatch(c) for c in chaves) for regex in restantes):
+            textos = [texto for _, texto in tabela.linha_de_celulas(no.linha)]
+            if all(any(casa(regex, texto) for texto in textos) for regex in restantes):
                 return tabela, no.linha
         return None
 
@@ -314,10 +336,13 @@ class Extrator:
         return juntar(registros, self.separador), True
 
     def _marcacao(self, padrao: str) -> tuple[str, bool]:
-        """Lê uma caixa de seleção do tipo "Estado [x]  Território [ ]"."""
-        localizacao = self._linha_com_rotulo(
-            "TERRITORIAL", r"estado", r"territoriode?identidade"
-        )
+        """Lê uma caixa de seleção do tipo "Estado [x]  Território [ ]".
+
+        A linha é localizada por "Estado"; há versões do modelo em que o
+        "Território de Identidade" não aparece ao lado, e nesse caso só a
+        marcação existente é reportada.
+        """
+        localizacao = self._linha_com_rotulo("TERRITORIAL", r"estado")
         if localizacao is None:
             return "", False
         tabela, linha = localizacao
@@ -325,7 +350,7 @@ class Extrator:
         regex = re.compile(padrao)
         celulas = tabela.linha_de_celulas(linha)
         for posicao, (_, texto) in enumerate(celulas):
-            if not regex.fullmatch(chave(texto)):
+            if not casa(regex, texto):
                 continue
             if esta_marcado(texto):  # marca dentro da própria célula (☒)
                 return "Sim", True
@@ -347,7 +372,7 @@ class Extrator:
             (
                 coluna
                 for coluna, texto in tabela.linha_de_celulas(linha_cabecalho)
-                if regex.fullmatch(chave(texto))
+                if casa(regex, texto)
             ),
             None,
         )

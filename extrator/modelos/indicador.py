@@ -172,7 +172,12 @@ CAMPOS: tuple[Campo, ...] = (
     ),
     Campo(
         coluna="Limitacoes_Meta_Orcamentarias",
-        padroes=(r"orcamentari[oa]s?financeir[oa]s?", r"orcamentari[oa]s?"),
+        # Há versões do modelo em que o rótulo é apenas "Financeiros".
+        padroes=(
+            r"orcamentari[oa]s?e?financeir[oa]s?",
+            r"orcamentari[oa]s?",
+            r"financeir[oa]s?",
+        ),
         secao="COMPLEMENTARES",
         descricao="Limitações orçamentárias/financeiras para definição da meta.",
     ),
@@ -216,6 +221,8 @@ ROTULOS_ESTRUTURAIS: tuple[str, ...] = (
     r"estado",
     r"anodameta",
     r"outraspossibilidadesde?regionalizacao",
+    r"criteriospara?distribuicaoterritorial",
+    r"desagregacaoterritorialregional.*",
     r"indicadores?do?programasensibilizados?",
 )
 

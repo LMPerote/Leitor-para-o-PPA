@@ -778,3 +778,117 @@ def _png_de_teste(pasta: Path) -> Path:
     caminho = pasta / "figura.png"
     caminho.write_bytes(_PNG_MINIMO)
     return caminho
+
+
+# ---------------------------------------------------------------------------
+# Variantes reais do modelo: "Bloco N:", rótulos explicados entre parênteses,
+# "Financeiros" no lugar de "Orçamentárias/Financeiras" e a Ficha de Controle
+# ---------------------------------------------------------------------------
+CONTROLE = MODELOS_POR_CODIGO["CONTROLE"]
+
+
+def criar_ficha_indicador_variante(destino: Path) -> Path:
+    """Layout do eixo E13-GG: seções numeradas e rótulos com explicação."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["Bloco 1: VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_vertical(
+        documento,
+        [
+            "Eixo",
+            "Gestão Governamental",
+            "Programa",
+            "Governo Digital",
+            "Compromisso (Objetivo do Compromisso)",
+            "Aprimorar a governança de TIC",
+            "Problema(s) vinculado(s) ao Compromisso",
+            "Governança fragmentada",
+            "Causa(s) Crítica(s)",
+            "Causa X.",
+            "Bloco 2: ATRIBUTOSDO INDICADOR DE COMPROMISSO",
+        ],
+    )
+    _tabela_vertical(
+        documento,
+        [
+            "Descrição (Descrição do Indicador)",
+            "Percentual de implementação",
+            "Fonte (Fonte de Informação)",
+            "Saeb/SGI",
+        ],
+    )
+    _tabela_vertical(documento, ["Bloco 4: INFORMAÇÕES COMPLEMENTARES"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Limitações para definição do valor da meta", ""),
+            ("Operacionais", "Não identificado"),
+            ("Financeiros", "Sem orçamento previsto"),
+            ("Institucionais ou políticos", "Não identificado"),
+        ],
+    )
+    documento.save(destino)
+    return destino
+
+
+def criar_ficha_controle(destino: Path) -> Path:
+    """Capa do diretório do compromisso: rótulo e valor na mesma célula."""
+    documento = docx.Document()
+    tabela = documento.add_table(rows=6, cols=2)
+    tabela.cell(0, 0).text = "NOME DO DIRETÓRIO DO COMPROMISSO: \nE13-GG-PGovernoDigital-C1"
+    tabela.cell(1, 0).text = "EIXO: \n13 - Gestão Governamental"
+    tabela.cell(2, 0).text = "PROGRAMA: \nGoverno Digital"
+    tabela.cell(3, 0).text = "COMPROMISSO \nAprimorar a governança de TIC"
+    tabela.cell(4, 0).text = "NOME DIGITADORA FIPLAN: \nManuela Alves"
+    tabela.cell(4, 1).text = "DATA INSERÇÃO NO FIPLAN:\n11/ agosto / 2023"
+    tabela.cell(5, 0).text = "N° de INDICADORES DE COMPROMISSO:\n3"
+    tabela.cell(5, 1).text = "N° de Fichas de INICIATIVAS: \n2"
+    documento.save(destino)
+    return destino
+
+
+def test_variante_com_bloco_numerado_e_reconhecida(tmp_path: Path):
+    caminho = criar_ficha_indicador_variante(tmp_path / "variante.docx")
+    documento = ler_documento(str(caminho))
+    assert classificar(documento) is INDICADOR  # "Bloco 1: VÍNCULO..."
+
+
+def test_variante_extrai_rotulos_com_explicacao(tmp_path: Path):
+    caminho = criar_ficha_indicador_variante(tmp_path / "variante.docx")
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+
+    assert valores["Compromisso"] == "Aprimorar a governança de TIC"
+    assert valores["Atributos_Descricao"] == "Percentual de implementação"
+    assert valores["Fonte"] == "Saeb/SGI"
+    # "Financeiros" no lugar de "Orçamentárias/Financeiras".
+    assert valores["Limitacoes_Meta_Orcamentarias"] == "Sem orçamento previsto"
+    # A causa crítica não invade o cabeçalho do bloco seguinte.
+    assert valores["Causas_Criticas"] == "Causa X."
+
+
+def test_ficha_de_controle_e_um_terceiro_tipo(tmp_path: Path):
+    caminho = criar_ficha_controle(tmp_path / "controle.docx")
+    documento = ler_documento(str(caminho))
+    assert classificar(documento) is CONTROLE
+
+    valores = Extrator(CONTROLE).extrair(documento).valores
+    assert valores["Nome_Diretorio_Compromisso"] == "E13-GG-PGovernoDigital-C1"
+    assert valores["Eixo"] == "13 - Gestão Governamental"
+    # Rótulo na primeira linha e valor abaixo, sem dois-pontos.
+    assert valores["Compromisso"] == "Aprimorar a governança de TIC"
+    assert valores["Nome_Digitador_Fiplan"] == "Manuela Alves"
+    assert valores["Data_Insercao_Fiplan"] == "11/ agosto / 2023"
+    assert valores["Qtd_Indicadores_Compromisso"] == "3"
+    assert valores["Qtd_Fichas_Iniciativas"] == "2"
+
+
+def test_lote_com_os_tres_tipos(tmp_path: Path):
+    pasta = tmp_path / "tres"
+    pasta.mkdir()
+    criar_ficha_indicador(pasta / "indicador.docx")
+    criar_ficha_iniciativa(pasta / "iniciativa.docx")
+    criar_ficha_controle(pasta / "controle.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    assert estatisticas.processados == {"INDICADOR": 1, "INICIATIVA": 1, "CONTROLE": 1}
+    assert estatisticas.total_ignorados == 0
+    assert len(registros["CONTROLE"]) == 1

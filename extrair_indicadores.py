@@ -7,6 +7,7 @@ com UMA linha por problema vinculado (o normal é um problema por ficha):
 
 * "VÍNCULO DO INDICADOR DE COMPROMISSO" -> ``Indicadores.xlsx``
 * "VÍNCULO DA INICIATIVA"               -> ``Iniciativas.xlsx``
+* "NOME DO DIRETÓRIO DO COMPROMISSO"    -> ``Controles.xlsx``
 
 Exemplos de uso:
 
