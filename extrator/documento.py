@@ -12,7 +12,10 @@ O modelo produzido tem duas visões complementares:
 
 from __future__ import annotations
 
+import io
+import logging
 import re
+import zipfile
 from dataclasses import dataclass, field
 
 import docx
@@ -25,6 +28,8 @@ from docx.text.paragraph import Paragraph
 
 from .modelos import SECOES
 from .texto import chave, limpar
+
+logger = logging.getLogger(__name__)
 
 # Cabeçalhos que delimitam as grandes seções das fichas (de qualquer tipo: a
 # leitura acontece antes da classificação). A comparação é feita pela chave
@@ -216,13 +221,15 @@ class Documento:
 class _Leitor:
     """Percorre o documento montando nós e grades, controlando a seção atual."""
 
-    def __init__(self, caminho: str) -> None:
+    def __init__(self, caminho: str, fonte=None) -> None:
         self.documento = Documento(caminho=caminho)
+        #: De onde ler de fato: o caminho ou uma cópia recuperada em memória.
+        self.fonte = fonte if fonte is not None else caminho
         self.secao = SECAO_INICIAL
         self.ordem = 0
 
     def ler(self) -> Documento:
-        arquivo = docx.Document(self.documento.caminho)
+        arquivo = docx.Document(self.fonte)
         self._percorrer(_blocos(arquivo))
         return self.documento
 
@@ -298,6 +305,59 @@ class _Leitor:
                 self._ler_tabela(aninhada)
 
 
+#: PNG 1x1 transparente, usado para substituir imagens ilegíveis.
+_PNG_MINIMO = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+    b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00"
+    b"\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+#: Partes sem as quais o documento não pode ser lido: se uma delas estiver
+#: corrompida, não há o que recuperar.
+_PARTES_ESSENCIAIS = ("word/document.xml", "[Content_Types].xml")
+
+
+def _recuperar_pacote(caminho: str) -> io.BytesIO:
+    """Reconstrói o .docx em memória descartando as partes ilegíveis.
+
+    Acontece de uma ficha ter uma imagem com CRC inválido (o Word grava e o
+    arquivo passa a falhar em qualquer leitor). Como o texto vive em
+    ``word/document.xml``, dá para recuperar o conteúdo trocando a imagem
+    quebrada por um PNG vazio — o que importa aqui é o texto, não a figura.
+    """
+    recuperado = io.BytesIO()
+    with zipfile.ZipFile(caminho) as origem, zipfile.ZipFile(
+        recuperado, "w", zipfile.ZIP_DEFLATED
+    ) as destino:
+        for item in origem.infolist():
+            try:
+                dados = origem.read(item.filename)
+            except Exception as erro:  # noqa: BLE001 - entrada corrompida
+                if item.filename in _PARTES_ESSENCIAIS or item.filename.endswith(
+                    ".rels"
+                ):
+                    raise
+                dados = _PNG_MINIMO if item.filename.startswith("word/media/") else b""
+                logger.warning(
+                    "Parte ilegível em '%s' substituída: %s (%s)",
+                    caminho,
+                    item.filename,
+                    erro,
+                )
+            destino.writestr(item, dados)
+
+    recuperado.seek(0)
+    return recuperado
+
+
 def ler_documento(caminho: str) -> Documento:
-    """Lê um arquivo .docx e devolve o modelo navegável."""
-    return _Leitor(caminho).ler()
+    """Lê um arquivo .docx e devolve o modelo navegável.
+
+    Se o pacote estiver parcialmente corrompido, tenta uma segunda leitura
+    sobre uma cópia recuperada antes de desistir.
+    """
+    try:
+        return _Leitor(caminho).ler()
+    except (zipfile.BadZipFile, EOFError) as erro:
+        logger.info("Tentando recuperar '%s': %s", caminho, erro)
+        return _Leitor(caminho, fonte=_recuperar_pacote(caminho)).ler()

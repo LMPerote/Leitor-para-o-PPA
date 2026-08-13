@@ -719,3 +719,62 @@ def test_ficha_sem_problema_nao_some_da_planilha():
 
     registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": ""}
     assert expandir_por_problema(registro, "\n") == [registro]
+
+
+# ---------------------------------------------------------------------------
+# Recuperação de pacotes .docx parcialmente corrompidos
+# ---------------------------------------------------------------------------
+def _corromper_imagem(origem: Path, destino: Path) -> Path:
+    """Reescreve o .docx com o CRC de uma imagem inválido.
+
+    Reproduz o erro real "Bad CRC-32 for file 'word/media/imageN.png'", que
+    aparece em fichas gravadas pelo Word com a imagem danificada.
+    """
+    import zipfile
+
+    with zipfile.ZipFile(origem) as entrada, zipfile.ZipFile(destino, "w") as saida:
+        for item in entrada.infolist():
+            dados = entrada.read(item.filename)
+            if item.filename.startswith("word/media/"):
+                info = zipfile.ZipInfo(item.filename, date_time=item.date_time)
+                info.compress_type = zipfile.ZIP_STORED
+                saida.writestr(info, dados)
+            else:
+                saida.writestr(item, dados)
+
+    # Vira um byte no meio da imagem gravada sem compressão: o conteúdo deixa
+    # de bater com o CRC registrado no cabeçalho.
+    bruto = bytearray(destino.read_bytes())
+    marca = bruto.find(b"\x89PNG")
+    assert marca > 0, "imagem não encontrada no pacote de teste"
+    bruto[marca + 20] ^= 0xFF
+    destino.write_bytes(bytes(bruto))
+    return destino
+
+
+def test_docx_com_imagem_corrompida_ainda_e_lido(tmp_path: Path):
+    import zipfile
+
+    original = criar_ficha_indicador(tmp_path / "com_imagem.docx")
+    documento = docx.Document(original)
+    documento.add_picture(str(_png_de_teste(tmp_path)))
+    documento.save(original)
+
+    quebrado = _corromper_imagem(original, tmp_path / "quebrado.docx")
+
+    # Sem recuperação, a leitura falharia.
+    with pytest.raises(zipfile.BadZipFile):
+        docx.Document(str(quebrado))
+
+    # Com recuperação, o texto continua acessível e a ficha é classificada.
+    lido = ler_documento(str(quebrado))
+    assert classificar(lido) is INDICADOR
+    assert Extrator(INDICADOR).extrair(lido).valores["Eixo"] == "EIXO DE TESTE"
+
+
+def _png_de_teste(pasta: Path) -> Path:
+    from extrator.documento import _PNG_MINIMO
+
+    caminho = pasta / "figura.png"
+    caminho.write_bytes(_PNG_MINIMO)
+    return caminho
