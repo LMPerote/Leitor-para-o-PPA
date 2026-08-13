@@ -33,9 +33,9 @@ MODELOS_POR_CODIGO: dict[str, Modelo] = {modelo.codigo: modelo for modelo in MOD
 #: o mesmo identificador (ex.: "VÍNCULO DO INDICADOR..." e "VÍNCULO DA
 #: INICIATIVA" viram ambos ``VINCULO``), o que mantém o mapa de campos legível.
 SECOES: tuple[tuple[str, str], ...] = (
-    (r"vinculodoindicadordecompromisso", "VINCULO"),
+    (r"vinculodoindicadord[eo]compromisso", "VINCULO"),
     (r"vinculodainiciativa", "VINCULO"),
-    (r"atributosdo?indicadordecompromisso", "ATRIBUTOS"),
+    (r"atributosdo?indicadord[eo]compromisso", "ATRIBUTOS"),
     (r"atributosdainiciativa", "ATRIBUTOS"),
     (r"desagregacaoterritorial", "TERRITORIAL"),
     (r"informacoescomplementares", "COMPLEMENTARES"),

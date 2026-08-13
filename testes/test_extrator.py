@@ -939,3 +939,57 @@ def test_variante_previsao_de_recursos_e_localizada(tmp_path: Path):
     caminho = criar_iniciativa_variante_teto(tmp_path / "teto.docx")
     resultado = Extrator(INICIATIVA).extrair(ler_documento(str(caminho)))
     assert "Recursos_Orcamentarios" not in resultado.nao_encontrados
+
+
+def criar_indicador_vinculo_do_compromisso(destino: Path) -> Path:
+    """Layout do E11-SAÚDE: "INDICADOR DO COMPROMISSO" e duas colunas.
+
+    Aqui "Problema(s) vinculado(s)" e "Causas Críticas" ficam lado a lado, cada
+    um com sua própria coluna de itens.
+    """
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DO COMPROMISSO"])
+    _tabela_grade(
+        documento,
+        [
+            ["Eixo", ""],
+            ["Saúde", ""],
+            ["Problema(s) vinculado(s) ao Compromisso", "Causas Críticas"],
+            ["Primeiro problema", "Primeira causa"],
+            ["Segundo problema", "Segunda causa"],
+        ],
+    )
+    _tabela_vertical(
+        documento,
+        ["ATRIBUTOS DO INDICADOR DO COMPROMISSO"],
+    )
+    _tabela_vertical(documento, ["Descrição", "Número de pesquisas incorporadas"])
+    documento.save(destino)
+    return destino
+
+
+def test_variante_indicador_do_compromisso(tmp_path: Path):
+    caminho = criar_indicador_vinculo_do_compromisso(tmp_path / "saude.docx")
+    documento = ler_documento(str(caminho))
+    assert classificar(documento) is INDICADOR  # "DO" no lugar de "DE"
+
+    valores = Extrator(INDICADOR).extrair(documento).valores
+    assert valores["Eixo"] == "Saúde"
+    assert valores["Atributos_Descricao"] == "Número de pesquisas incorporadas"
+    # Colunas lado a lado: cada bloco desce pela sua própria coluna.
+    assert valores["Problemas_Vinculados"] == "Primeiro problema\nSegundo problema"
+    assert valores["Causas_Criticas"] == "Primeira causa\nSegunda causa"
+
+
+def test_variante_do_compromisso_gera_uma_linha_por_problema(tmp_path: Path):
+    pasta = tmp_path / "saude"
+    pasta.mkdir()
+    criar_indicador_vinculo_do_compromisso(pasta / "saude.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    assert estatisticas.processados["INDICADOR"] == 1
+    assert estatisticas.linhas["INDICADOR"] == 2
+    assert [l["Problemas_Vinculados"] for l in registros["INDICADOR"]] == [
+        "Primeiro problema",
+        "Segundo problema",
+    ]

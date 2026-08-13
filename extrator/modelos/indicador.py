@@ -206,8 +206,8 @@ CAMPOS: tuple[Campo, ...] = (
 #: Rótulos estruturais desta ficha que não viram coluna, mas que o motor
 #: precisa conhecer para não confundi-los com *valores*.
 ROTULOS_ESTRUTURAIS: tuple[str, ...] = (
-    r"vinculodoindicadordecompromisso",
-    r"atributosdo?indicadordecompromisso",
+    r"vinculodoindicadord[eo]compromisso",
+    r"atributosdo?indicadord[eo]compromisso",
     r"desagregacaoterritorial",
     r"informacoescomplementares",
     r"responsavelpeloindicador",
@@ -230,6 +230,9 @@ MODELO = Modelo(
     codigo="INDICADOR",
     rotulo="Indicador de Compromisso",
     arquivo_saida="Indicadores.xlsx",
-    deteccao=(r"vinculodoindicadordecompromisso", r"atributosdo?indicadordecompromisso"),
+    deteccao=(
+        r"vinculodoindicadord[eo]compromisso",
+        r"atributosdo?indicadord[eo]compromisso",
+    ),
     campos=CAMPOS,
 )
