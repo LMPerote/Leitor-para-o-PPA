@@ -74,7 +74,11 @@ documentos/
 ## 4. Rodando com dois cliques (janela gráfica)
 
 Dê **dois cliques em `Extrair PPA.bat`**. Na primeira vez ele instala as
-dependências sozinho; depois abre a janela do aplicativo:
+dependências sozinho; depois abre a janela do aplicativo. Se algo impedir a
+abertura, ele mostra o motivo em uma janela de texto e espera — nunca falha em
+silêncio.
+
+A janela tem:
 
 * **Documentos (.docx)** → *Procurar...* e selecione a pasta das fichas;
 * **Salvar planilhas em** → *Procurar...* e escolha onde gravar;
