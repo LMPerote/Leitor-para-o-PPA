@@ -1,6 +1,6 @@
 # Leitor para o PPA — fichas .docx → planilhas Excel
 
-Aplicação de linha de comando que varre uma pasta com **centenas/milhares** de
+Aplicação (com **janela gráfica** e também linha de comando) que varre uma pasta com **centenas/milhares** de
 fichas de planejamento governamental em Word (`.docx`), **identifica
 automaticamente o tipo de cada documento** e consolida tudo em **duas planilhas
 Excel**, onde **cada arquivo Word vira exatamente uma linha**:
@@ -19,14 +19,14 @@ da respectiva coluna.
 
 ## 1. Preparando a pasta e instalando
 
-Requer **Python 3.10 ou superior**.
+Requer **Python 3.10 ou superior** ([python.org/downloads](https://www.python.org/downloads/)
+— no instalador, marque *Add python.exe to PATH*).
+
+No Windows, **não é preciso instalar mais nada**: o `Extrair PPA.bat` instala as
+dependências na primeira execução. Para instalar manualmente (ou fora do
+Windows):
 
 ```bash
-# 1) (recomendado) ambiente virtual
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
-# 2) dependências
 pip install -r requirements.txt
 ```
 
@@ -47,7 +47,27 @@ documentos/
 > convertidos antes — no Word: *Salvar como → .docx*; em lote no Linux:
 > `libreoffice --headless --convert-to docx *.doc`.
 
-## 2. Rodando
+## 2. Rodando com dois cliques (janela gráfica)
+
+Dê **dois cliques em `Extrair PPA.bat`**. Na primeira vez ele instala as
+dependências sozinho; depois abre a janela do aplicativo:
+
+* **Documentos (.docx)** → *Procurar...* e selecione a pasta das fichas;
+* **Salvar planilhas em** → *Procurar...* e escolha onde gravar;
+* clique em **Extrair** e acompanhe a barra de progresso;
+* ao final, o relatório aparece na janela e o botão **Abrir pasta das
+  planilhas** leva direto ao resultado.
+
+As pastas escolhidas ficam memorizadas (em `preferencias.json`) para a próxima
+vez. A opção **Testar com os 10 primeiros arquivos** é o jeito rápido de
+conferir o resultado antes de rodar o acervo inteiro.
+
+> Para criar um atalho na Área de Trabalho: clique com o botão direito em
+> `Extrair PPA.bat` → *Enviar para* → *Área de trabalho (criar atalho)*.
+
+No macOS/Linux, a mesma janela abre com `python interface.py`.
+
+## 3. Rodando pelo terminal
 
 ```bash
 python extrair_indicadores.py -e ./documentos -s ./saida
@@ -96,7 +116,7 @@ python extrair_indicadores.py -e ./documentos -s ./saida --limite 10 --csv --log
 python extrair_indicadores.py -e ./documentos -s ./saida --separador ponto-virgula
 ```
 
-## 3. As planilhas geradas
+## 4. As planilhas geradas
 
 Cada planilha tem a aba de dados (uma linha por arquivo) e a aba **Dicionário**,
 que descreve cada coluna. As duas são sempre geradas, mesmo que um dos tipos não
@@ -162,7 +182,7 @@ Total dos Recursos: R$ 2.400.000,00
 Arquivos corrompidos ou de tipo não reconhecido **não entram nas planilhas**:
 são listados no relatório final e no log, e **nunca interrompem o lote**.
 
-## 4. Como o parser funciona
+## 5. Como o parser funciona
 
 1. **Leitura estrutural** (`extrator/documento.py`): parágrafos e células são
    lidos na ordem do documento; tabelas viram uma grade que trata **células
@@ -204,14 +224,14 @@ python extrair_indicadores.py --inspecionar ./documentos/ficha.docx
 A saída mostra o tipo detectado e, para cada célula, a seção, se ela foi
 reconhecida como `RÓTULO` ou `valor`, e sua posição na tabela.
 
-## 5. Testes
+## 6. Testes
 
 ```bash
 pip install pytest
-pytest -q          # 61 testes: classificação, os dois modelos, erros e Excel
+pytest -q          # 66 testes: classificação, os dois modelos, erros e Excel
 ```
 
-## 6. Observações operacionais
+## 7. Observações operacionais
 
 * Desempenho de referência: ~35 documentos/segundo (≈2.000/minuto).
 * Textos acima do limite do Excel (32.767 caracteres por célula) são truncados
@@ -222,12 +242,16 @@ pytest -q          # 61 testes: classificação, os dois modelos, erros e Excel
   de quebra de linha, as quebras internas de uma célula do Word (várias causas
   na mesma célula) também são convertidas.
 
-## 7. Estrutura do projeto
+## 8. Estrutura do projeto
 
 ```
 Leitor-para-o-PPA/
+├── Extrair PPA.bat            # atalho de dois cliques (Windows)
+├── interface.py               # janela gráfica (Tkinter)
 ├── extrair_indicadores.py     # CLI: argumentos, progresso, log e relatório
 ├── extrator/
+│   ├── aplicacao.py           # fluxo completo, usado pela janela e pelo CLI
+│   ├── relatorio.py           # texto do relatório final
 │   ├── modelos/
 │   │   ├── base.py            # Campo, Modelo e colunas de auditoria
 │   │   ├── indicador.py       # mapa de campos do Indicador de Compromisso

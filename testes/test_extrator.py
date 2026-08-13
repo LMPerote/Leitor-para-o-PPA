@@ -583,3 +583,72 @@ def test_sanitizacao_para_o_excel():
     assert sanitizar("=1+1").startswith("'")  # não vira fórmula
     assert sanitizar("a\x07b") == "ab"  # caractere de controle removido
     assert len(sanitizar("x" * (LIMITE_CELULA + 500))) <= LIMITE_CELULA
+
+
+# ---------------------------------------------------------------------------
+# Fluxo completo (compartilhado pela linha de comando e pela janela gráfica)
+# ---------------------------------------------------------------------------
+def test_executar_grava_as_duas_planilhas(pasta: Path, tmp_path: Path):
+    from extrator.aplicacao import Opcoes, executar
+
+    saida = tmp_path / "planilhas"
+    execucao = executar(Opcoes(entrada=pasta, saida=saida))
+
+    assert (saida / "Indicadores.xlsx").is_file()
+    assert (saida / "Iniciativas.xlsx").is_file()
+    assert execucao.estatisticas.processados == {"INDICADOR": 2, "INICIATIVA": 1}
+    assert execucao.destinos["INDICADOR"] == (saida / "Indicadores.xlsx").resolve()
+
+
+def test_executar_respeita_limite_e_progresso(pasta: Path, tmp_path: Path):
+    from extrator.aplicacao import Opcoes, executar
+
+    class Contador:
+        def __init__(self, total):
+            self.total, self.passos = total, 0
+
+        def update(self, quantidade=1):
+            self.passos += quantidade
+
+    criados: list[Contador] = []
+
+    def criar(total):
+        criados.append(Contador(total))
+        return criados[-1]
+
+    execucao = executar(
+        Opcoes(entrada=pasta, saida=tmp_path / "p", limite=2), criar_progresso=criar
+    )
+    assert len(execucao.arquivos) == 2
+    assert criados[0].total == 2 and criados[0].passos == 2
+
+
+def test_executar_sem_documentos_avisa(tmp_path: Path):
+    from extrator.aplicacao import Opcoes, PastaSemDocumentos, executar
+
+    vazia = tmp_path / "vazia"
+    vazia.mkdir()
+    with pytest.raises(PastaSemDocumentos):
+        executar(Opcoes(entrada=vazia, saida=tmp_path / "p"))
+
+
+def test_relatorio_traz_contagem_por_tipo_e_ignorados(pasta: Path, tmp_path: Path):
+    from extrator.aplicacao import Opcoes, executar
+    from extrator.relatorio import montar_relatorio
+
+    execucao = executar(Opcoes(entrada=pasta, saida=tmp_path / "p"))
+    texto = montar_relatorio(execucao.estatisticas, execucao.destinos, 1.23)
+
+    assert "2 arquivos de Indicador de Compromisso processados." in texto
+    assert "1 arquivos de Iniciativa processados." in texto
+    assert "2 arquivos ignorados ou com erro." in texto
+    assert "corrompido.docx" in texto and "outro_documento.docx" in texto
+    assert "1.2s" in texto
+
+
+def test_apelidos_de_separador():
+    from extrator.aplicacao import resolver_separador
+
+    assert resolver_separador("quebra") == "\n"
+    assert resolver_separador("ponto-virgula") == "; "
+    assert resolver_separador(" / ") == " / "  # texto literal passa direto

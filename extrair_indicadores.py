@@ -28,10 +28,9 @@ import sys
 import time
 from pathlib import Path
 
-from extrator import __version__, listar_documentos, montar_dataframe, processar_lote
-from extrator.modelos import MODELOS, MODELOS_POR_CODIGO
-from extrator.pipeline import Estatisticas
-from extrator.planilha import salvar_csv, salvar_excel
+from extrator import __version__
+from extrator.aplicacao import Opcoes, PastaSemDocumentos, executar, resolver_separador
+from extrator.relatorio import montar_relatorio
 
 try:  # A barra de progresso é opcional: sem tqdm, usa um contador simples.
     from tqdm import tqdm
@@ -39,9 +38,6 @@ except ImportError:  # pragma: no cover
     tqdm = None
 
 logger = logging.getLogger("extrator")
-
-SEPARADORES = {"quebra": "\n", "ponto-virgula": "; ", "barra": " | "}
-LARGURA_RELATORIO = 66
 
 
 def configurar_log(arquivo_log: Path | None, verboso: bool) -> None:
@@ -163,79 +159,37 @@ def main(argumentos: list[str] | None = None) -> int:
         logger.error("Pasta de entrada inválida: %s", opcoes.entrada)
         return 2
 
-    arquivos = listar_documentos(opcoes.entrada, recursivo=not opcoes.sem_recursao)
-    if opcoes.limite > 0:
-        arquivos = arquivos[: opcoes.limite]
-    if not arquivos:
-        logger.error("Nenhum arquivo .docx encontrado em %s", opcoes.entrada)
+    inicio = time.perf_counter()
+    try:
+        execucao = executar(
+            Opcoes(
+                entrada=opcoes.entrada,
+                saida=opcoes.saida,
+                recursivo=not opcoes.sem_recursao,
+                separador=resolver_separador(opcoes.separador),
+                gerar_csv=opcoes.csv,
+                limite=opcoes.limite,
+            ),
+            criar_progresso=_barra_de_progresso,
+        )
+    except PastaSemDocumentos as erro:
+        logger.error("%s", erro)
         return 1
 
-    separador = SEPARADORES.get(opcoes.separador, opcoes.separador)
-    logger.info("Arquivos encontrados: %d", len(arquivos))
-
-    inicio = time.perf_counter()
-    barra = (
-        tqdm(total=len(arquivos), unit="doc", desc="Extraindo", ncols=88) if tqdm else None
+    print()
+    print(
+        montar_relatorio(
+            execucao.estatisticas, execucao.destinos, time.perf_counter() - inicio
+        )
     )
-    try:
-        registros, estatisticas = processar_lote(
-            arquivos, opcoes.entrada, separador=separador, barra_de_progresso=barra
-        )
-    finally:
-        if barra:
-            barra.close()
-
-    # Uma planilha por tipo de ficha. São geradas mesmo quando vazias, para
-    # que a saída do aplicativo seja sempre previsível.
-    destinos: dict[str, Path] = {}
-    for modelo in MODELOS:
-        quadro = montar_dataframe(registros[modelo.codigo], modelo)
-        destino = opcoes.saida / modelo.arquivo_saida
-        salvar_excel(quadro, destino, modelo)
-        destinos[modelo.codigo] = destino
-        if opcoes.csv:
-            salvar_csv(quadro, destino.with_suffix(".csv"))
-
-    imprimir_relatorio(estatisticas, destinos, time.perf_counter() - inicio)
-    return 0 if estatisticas.total_ignorados == 0 else 3
+    return 0 if execucao.estatisticas.total_ignorados == 0 else 3
 
 
-def imprimir_relatorio(
-    estatisticas: Estatisticas, destinos: dict[str, Path], duracao: float
-) -> None:
-    """Resumo final do lote, por tipo de ficha."""
-    regua = "=" * LARGURA_RELATORIO
-    linhas = ["", regua, "RELATÓRIO DE EXTRAÇÃO", regua]
-    linhas.append(f"Arquivos encontrados .......: {estatisticas.total}")
-
-    for modelo in MODELOS:
-        quantidade = estatisticas.processados.get(modelo.codigo, 0)
-        pendentes = estatisticas.com_pendencias.get(modelo.codigo, 0)
-        linhas.append(f"{quantidade} arquivos de {modelo.rotulo} processados.")
-        if pendentes:
-            linhas.append(f"  - {pendentes} com algum campo não localizado.")
-        linhas.append(f"  - planilha: {destinos[modelo.codigo].resolve()}")
-
-    linhas.append(f"{estatisticas.total_ignorados} arquivos ignorados ou com erro.")
-    linhas += [
-        f"  - {ocorrencia.arquivo}: {ocorrencia.motivo}"
-        for ocorrencia in estatisticas.ignorados
-    ]
-    linhas.append(f"Tempo total ................: {duracao:.1f}s")
-
-    for codigo, ausentes in estatisticas.campos_ausentes.items():
-        if not ausentes:
-            continue
-        linhas.append("-" * LARGURA_RELATORIO)
-        linhas.append(
-            f"Campos mais ausentes em {MODELOS_POR_CODIGO[codigo].rotulo} "
-            "(rótulo não localizado no documento):"
-        )
-        mais_ausentes = sorted(ausentes.items(), key=lambda item: -item[1])[:10]
-        linhas += [f"  {contagem:>5}x  {coluna}" for coluna, contagem in mais_ausentes]
-
-    linhas.append(regua)
-    print("\n".join(linhas))
+def _barra_de_progresso(total: int):
+    """Barra do tqdm; sem a biblioteca instalada, segue sem barra."""
+    if tqdm is None:
+        return None
+    return tqdm(total=total, unit="doc", desc="Extraindo", ncols=88)
 
 
 if __name__ == "__main__":
