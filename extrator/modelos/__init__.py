@@ -41,6 +41,8 @@ SECOES: tuple[tuple[str, str], ...] = (
     (r"informacoescomplementares", "COMPLEMENTARES"),
     (r"fatorescriticosde?contextodainiciativa", "FATORES"),
     (r"estimativadosrecursos.*", "RECURSOS"),
+    # Variante: "Previsão de Recursos - Estimativa do Teto da Iniciativa".
+    (r"previsaode?recursos.*", "RECURSOS"),
     (r"indicadorde?compromissovinculado", "INDICADORES"),
     # A ordem importa: vence o primeiro padrão que casar. O cabeçalho dos
     # produtos ("... Produtos das ações orçamentárias vinculadas ...") também

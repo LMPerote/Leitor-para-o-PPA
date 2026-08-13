@@ -892,3 +892,50 @@ def test_lote_com_os_tres_tipos(tmp_path: Path):
     assert estatisticas.processados == {"INDICADOR": 1, "INICIATIVA": 1, "CONTROLE": 1}
     assert estatisticas.total_ignorados == 0
     assert len(registros["CONTROLE"]) == 1
+
+
+def criar_iniciativa_variante_teto(destino: Path) -> Path:
+    """Layout do eixo E10-MASH: "Previsão de Recursos" e "Total do Teto"."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(documento, ["Eixo", "MEIO AMBIENTE"])
+    _tabela_vertical(documento, ["ATRIBUTOS DA INICIATIVA"])
+    _tabela_grade(
+        documento,
+        [
+            ["Fatores Críticos de Contexto da Iniciativa", ""],
+            ["Operacionais", "Equipe reduzida"],
+            ["Financeiros", "Alto custo da contratação"],
+        ],
+    )
+    _tabela_grade(
+        documento,
+        [
+            ["Previsão de Recursos – Estimativa do Teto da Iniciativa", "", ""],
+            ["Código da Fonte", "Nome da Fonte", "Montante em R$"],
+            ["100", "Tesouro Estadual", "R$ 5.000,00"],
+            ["Total do Teto", "", "R$ 5.000,00"],
+        ],
+    )
+    documento.save(destino)
+    return destino
+
+
+def test_variante_previsao_de_recursos_com_total_do_teto(tmp_path: Path):
+    caminho = criar_iniciativa_variante_teto(tmp_path / "teto.docx")
+    valores = Extrator(INICIATIVA).extrair(ler_documento(str(caminho))).valores
+
+    linhas = valores["Recursos_Orcamentarios"].split("\n")
+    assert linhas[0] == (
+        "Código da Fonte: 100 | Nome da Fonte: Tesouro Estadual | "
+        "Montante em R$: R$ 5.000,00"
+    )
+    # O rótulo do total é preservado como está no documento.
+    assert linhas[-1] == "Total do Teto: R$ 5.000,00"
+    assert valores["Fatores_Criticos_Orcamentarios"] == "Alto custo da contratação"
+
+
+def test_variante_previsao_de_recursos_e_localizada(tmp_path: Path):
+    caminho = criar_iniciativa_variante_teto(tmp_path / "teto.docx")
+    resultado = Extrator(INICIATIVA).extrair(ler_documento(str(caminho)))
+    assert "Recursos_Orcamentarios" not in resultado.nao_encontrados

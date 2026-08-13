@@ -43,6 +43,10 @@ _REGEX_ROTULOS = re.compile("|".join(f"(?:{p})" for p in ROTULOS_CONHECIDOS))
 #: Formas de um texto anunciar um rótulo, da mais literal à mais tolerante.
 EXATO, EMBUTIDO, PRIMEIRA_LINHA = 0, 1, 2
 
+#: Linha que fecha a tabela de recursos, com os nomes que ela recebe nas
+#: diferentes versões do modelo.
+_REGEX_TOTAL = re.compile(r"total(dos)?recursos|totaldo?teto")
+
 # Divisor "rótulo: valor" dentro de uma mesma célula/parágrafo (uma linha).
 _DIVISOR_INLINE = re.compile(r"^([^:\n]{2,80}?)\s*[:：]\s*(.+?)\s*(?:\n|$)")
 
@@ -319,18 +323,21 @@ class Extrator:
 
         registros = self._consolidar_linhas(self._linhas_da_tabela(tabela, linha_cabecalho))
 
-        # O total fica em uma linha rotulada, onde o laço acima parou.
+        # O total fica em uma linha rotulada, onde o laço acima parou. O rótulo
+        # é preservado como está no documento ("Total dos Recursos" ou
+        # "Total do Teto", conforme a versão do modelo).
         for numero in range(linha_cabecalho + 1, tabela.total_linhas):
             celulas = [texto for _, texto in tabela.linha_de_celulas(numero)]
-            if not any(chave(texto) == "totaldosrecursos" for texto in celulas):
+            rotulo = next((limpar(t) for t in celulas if casa(_REGEX_TOTAL, t)), "")
+            if not rotulo:
                 continue
             valores = [
                 limpar(texto)
                 for texto in celulas
-                if limpar(texto) and chave(texto) != "totaldosrecursos"
+                if limpar(texto) and not casa(_REGEX_TOTAL, texto)
             ]
             if valores:
-                registros.append(f"Total dos Recursos: {valores[-1]}")
+                registros.append(f"{rotulo}: {valores[-1]}")
             break
 
         return juntar(registros, self.separador), True

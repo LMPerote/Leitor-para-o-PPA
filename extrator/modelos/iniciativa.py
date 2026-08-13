@@ -126,8 +126,8 @@ CAMPOS: tuple[Campo, ...] = (
         extrator="recursos_orcamentarios",
         secao="RECURSOS",
         descricao=(
-            "Estimativa dos recursos: código e nome da fonte, montante em R$ "
-            "por fonte e total dos recursos."
+            "Previsão de recursos: código e nome da fonte, montante em R$ por "
+            "fonte e a linha de total (\"Total dos Recursos\" ou \"Total do Teto\")."
         ),
     ),
     # --- 5. INDICADORES VINCULADOS ----------------------------------------
@@ -176,6 +176,8 @@ ROTULOS_ESTRUTURAIS: tuple[str, ...] = (
     r"responsavelpelainiciativa",
     r"fatorescriticosde?contextodainiciativa",
     r"estimativadosrecursos.*",
+    r"previsaode?recursos.*",
+    r"totaldo?teto",
     r"etapaii.*",
     r"statuspara?atendimento",
     r"justificativas?",
