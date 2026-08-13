@@ -1,4 +1,4 @@
-"""Geração das planilhas Excel consolidadas (uma linha por documento).
+"""Geração das planilhas Excel consolidadas (uma linha por problema vinculado).
 
 Cada modelo de ficha gera seu próprio arquivo (``Indicadores.xlsx`` e
 ``Iniciativas.xlsx``), com as colunas definidas pelo modelo.

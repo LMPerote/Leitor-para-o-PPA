@@ -2,8 +2,8 @@
 """Extrai fichas do PPA (.docx) para planilhas Excel consolidadas.
 
 A pasta de entrada pode misturar os dois tipos de ficha; o tipo de cada
-documento é identificado automaticamente e cada arquivo Word vira exatamente
-UMA linha na planilha do seu tipo:
+documento é identificado automaticamente e vai para a planilha do seu tipo,
+com UMA linha por problema vinculado (o normal é um problema por ficha):
 
 * "VÍNCULO DO INDICADOR DE COMPROMISSO" -> ``Indicadores.xlsx``
 * "VÍNCULO DA INICIATIVA"               -> ``Iniciativas.xlsx``

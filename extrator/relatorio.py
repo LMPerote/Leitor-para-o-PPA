@@ -27,7 +27,11 @@ def montar_relatorio(
     for modelo in MODELOS:
         quantidade = estatisticas.processados.get(modelo.codigo, 0)
         pendentes = estatisticas.com_pendencias.get(modelo.codigo, 0)
+        geradas = estatisticas.linhas.get(modelo.codigo, quantidade)
         linhas.append(f"{quantidade} arquivos de {modelo.rotulo} processados.")
+        if geradas != quantidade:
+            # Acontece quando alguma ficha traz mais de um problema vinculado.
+            linhas.append(f"  - {geradas} linhas na planilha (um problema por linha).")
         if pendentes:
             linhas.append(f"  - {pendentes} com algum campo não localizado.")
         if modelo.codigo in destinos:

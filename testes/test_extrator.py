@@ -652,3 +652,70 @@ def test_apelidos_de_separador():
     assert resolver_separador("quebra") == "\n"
     assert resolver_separador("ponto-virgula") == "; "
     assert resolver_separador(" / ") == " / "  # texto literal passa direto
+
+
+# ---------------------------------------------------------------------------
+# Regra de negócio: UM problema por linha
+# ---------------------------------------------------------------------------
+def _ficha_com_dois_problemas(destino: Path) -> Path:
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_vertical(
+        documento,
+        [
+            "Eixo",
+            "EIXO COM DOIS PROBLEMAS",
+            "Problema(s) vinculado(s) ao Compromisso",
+            "Primeiro problema.\nSegundo problema.",
+            "Causa(s) Crítica(s)",
+            "Causa única.",
+            "ATRIBUTOS DO INDICADOR DE COMPROMISSO",
+        ],
+    )
+    _tabela_vertical(documento, ["Descrição", "Indicador de teste"])
+    documento.save(destino)
+    return destino
+
+
+def test_ficha_com_dois_problemas_gera_duas_linhas(tmp_path: Path):
+    pasta = tmp_path / "dois"
+    pasta.mkdir()
+    _ficha_com_dois_problemas(pasta / "ficha.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    linhas = registros["INDICADOR"]
+
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == [
+        "Primeiro problema.",
+        "Segundo problema.",
+    ]
+    # As demais colunas se repetem em todas as linhas da mesma ficha.
+    for coluna in ("Nome_Arquivo", "Eixo", "Causas_Criticas", "Atributos_Descricao"):
+        assert linhas[0][coluna] == linhas[1][coluna]
+    assert linhas[0]["Eixo"] == "EIXO COM DOIS PROBLEMAS"
+
+    # O arquivo continua contando como UM arquivo processado, com duas linhas.
+    assert estatisticas.processados["INDICADOR"] == 1
+    assert estatisticas.linhas["INDICADOR"] == 2
+
+
+def test_ficha_com_um_problema_gera_uma_linha(pasta: Path):
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    assert estatisticas.processados["INDICADOR"] == estatisticas.linhas["INDICADOR"]
+    assert len(registros["INICIATIVA"]) == 1
+
+
+def test_expansao_respeita_o_separador_escolhido():
+    from extrator.pipeline import expandir_por_problema
+
+    registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": "A; B; C"}
+    linhas = expandir_por_problema(registro, "; ")
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == ["A", "B", "C"]
+    assert all(linha["Nome_Arquivo"] == "f.docx" for linha in linhas)
+
+
+def test_ficha_sem_problema_nao_some_da_planilha():
+    from extrator.pipeline import expandir_por_problema
+
+    registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": ""}
+    assert expandir_por_problema(registro, "\n") == [registro]

@@ -32,6 +32,9 @@ class Estatisticas:
     total: int = 0
     #: código do modelo -> quantidade de arquivos processados.
     processados: dict[str, int] = field(default_factory=dict)
+    #: código do modelo -> linhas geradas na planilha. Difere de
+    #: ``processados`` quando alguma ficha traz mais de um problema vinculado.
+    linhas: dict[str, int] = field(default_factory=dict)
     #: código do modelo -> quantidade com algum campo não localizado.
     com_pendencias: dict[str, int] = field(default_factory=dict)
     #: arquivos ignorados (tipo não reconhecido) ou com erro de leitura.
@@ -111,6 +114,32 @@ def processar_arquivo(
     return modelo, registro, None
 
 
+#: Coluna que define a granularidade da planilha: uma linha por problema.
+COLUNA_PROBLEMA = "Problemas_Vinculados"
+
+
+def expandir_por_problema(
+    registro: dict[str, str], separador: str
+) -> list[dict[str, str]]:
+    """Desdobra o registro em uma linha por problema vinculado.
+
+    A regra de negócio é "um problema por linha": se a ficha trouxer mais de um
+    problema — o que não deveria acontecer, mas acontece —, cada um vira uma
+    linha e as demais colunas se repetem. Ficha com um problema (ou nenhum)
+    continua gerando uma única linha, para que todo arquivo apareça na planilha.
+    """
+    valor = registro.get(COLUNA_PROBLEMA, "")
+    if not valor or not separador:
+        return [registro]
+
+    problemas = [parte.strip() for parte in valor.split(separador)]
+    problemas = [problema for problema in problemas if problema]
+    if len(problemas) <= 1:
+        return [registro]
+
+    return [{**registro, COLUNA_PROBLEMA: problema} for problema in problemas]
+
+
 def processar_lote(
     arquivos: list[Path],
     pasta_base: Path,
@@ -132,9 +161,13 @@ def processar_lote(
                 Ocorrencia(caminho.name, motivo or "motivo desconhecido")
             )
         else:
-            registros[modelo.codigo].append(registro)
+            linhas = expandir_por_problema(registro, separador)
+            registros[modelo.codigo].extend(linhas)
             estatisticas.processados[modelo.codigo] = (
                 estatisticas.processados.get(modelo.codigo, 0) + 1
+            )
+            estatisticas.linhas[modelo.codigo] = (
+                estatisticas.linhas.get(modelo.codigo, 0) + len(linhas)
             )
             if registro["Status"] == "OK_COM_PENDENCIAS":
                 estatisticas.com_pendencias[modelo.codigo] = (

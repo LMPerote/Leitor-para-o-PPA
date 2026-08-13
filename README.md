@@ -3,7 +3,8 @@
 Aplicação (com **janela gráfica** e também linha de comando) que varre uma pasta com **centenas/milhares** de
 fichas de planejamento governamental em Word (`.docx`), **identifica
 automaticamente o tipo de cada documento** e consolida tudo em **duas planilhas
-Excel**, onde **cada arquivo Word vira exatamente uma linha**:
+Excel**, com **uma linha por problema vinculado** (na prática, uma linha por
+ficha: quase toda ficha tem um único problema):
 
 | Tipo do documento | Reconhecido por | Planilha gerada |
 |---|---|---|
@@ -146,11 +147,24 @@ python extrair_indicadores.py -e ./documentos -s ./saida --separador ponto-virgu
 
 ## 6. As planilhas geradas
 
-Cada planilha tem a aba de dados (uma linha por arquivo) e a aba **Dicionário**,
+Cada planilha tem a aba de dados e a aba **Dicionário**,
 que descreve cada coluna. As duas são sempre geradas, mesmo que um dos tipos não
 apareça na pasta. Formatação aplicada: cabeçalho em **negrito** com fundo azul
 escuro e texto branco, linha de cabeçalho congelada, filtro automático, largura de colunas
 ajustada e células com **quebra automática de texto** e alinhamento superior.
+
+### Uma linha por problema
+
+A granularidade da planilha é o **problema vinculado ao compromisso**: se uma
+ficha trouxer mais de um problema, ela gera uma linha para cada um, repetindo
+todas as demais colunas. Ficha com um problema — o caso normal — continua
+gerando uma linha só, e nenhum arquivo deixa de aparecer na planilha, mesmo sem
+problema preenchido.
+
+O relatório final avisa quando isso acontece (`N linhas na planilha`), e a
+coluna `Nome_Arquivo` repetida deixa a duplicação visível. Atenção ao contar:
+para saber quantas **fichas** existem, conte os valores distintos de
+`Nome_Arquivo`, não o número de linhas.
 
 ### `Indicadores.xlsx`
 
