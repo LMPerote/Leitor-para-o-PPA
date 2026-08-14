@@ -1723,3 +1723,32 @@ def test_controle_com_rotulo_normal_continua_igual(tmp_path: Path):
     )
     valores = Extrator(CONTROLE).extrair(ler_documento(str(caminho))).valores
     assert valores["Compromisso"] == "Expandir o acesso à energia elétrica"
+
+
+def test_valor_que_comeca_com_rotulo_e_conteudo_legitimo(tmp_path: Path):
+    """A memória de cálculo começa com "Valor de Referência: 6" em 170 fichas.
+
+    É conteúdo, não o campo seguinte. Recusar toda célula que *anuncie* um
+    rótulo derrubava esse valor no acervo inteiro — por texto os dois casos
+    são indistinguíveis, então a regra estrita fica só onde foi verificada
+    (a ficha de controle, de uma coluna só).
+    """
+    documento = docx.Document()
+    _tabela_vertical(documento, ["ATRIBUTOS DO INDICADOR DE COMPROMISSO"])
+    _tabela_vertical(
+        documento,
+        [
+            "Memória de Cálculo",
+            "Valor de Referência: 6\nValor da Meta: 40 (meta para o quadriênio)",
+            "Unidade de medida",
+            "Unidade",
+        ],
+    )
+    caminho = tmp_path / "memoria.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+    assert valores["Memoria_Calculo"] == (
+        "Valor de Referência: 6\nValor da Meta: 40 (meta para o quadriênio)"
+    )
+    assert valores["Unidade_Medida"] == "Unidade"

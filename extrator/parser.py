@@ -304,14 +304,14 @@ class Extrator:
 
         abaixo = tabela.celulas_abaixo(no.linha, no.coluna)
         if not campo.multiplo:
+            # Aqui a parada é só no rótulo puro. Recusar toda célula que
+            # *anuncie* um rótulo derrubaria valor legítimo: a memória de
+            # cálculo, por exemplo, começa com "Valor de Referência: 6" em 170
+            # fichas — é conteúdo, não o campo seguinte. Por texto os dois
+            # casos são indistinguíveis, então quem precisa da regra estrita
+            # (a ficha de controle, de uma coluna só) a aplica no seu extrator.
             for texto in abaixo:
-                # Parar em qualquer célula que *anuncie* outro rótulo, e não só
-                # nas que são o rótulo puro: no layout de uma coluna só, o campo
-                # seguinte vem como "RÓTULO: valor" na mesma célula, e descer
-                # por cima dele trazia a resposta do campo errado.
-                if anuncia_rotulo(texto):
-                    return ""
-                if self._util(texto, campo):
+                if self._util(texto, campo) and not eh_rotulo(texto):
                     return texto
             return ""
 
@@ -441,6 +441,12 @@ class Extrator:
         "Programa" que não anuncie outro rótulo.
         """
         valor, encontrado, tinha_rotulo = self._extrair_por_rotulo(campo)
+        if encontrado and anuncia_rotulo(valor):
+            # A ficha de controle é de uma coluna só: com o compromisso em
+            # branco, a busca desce e encontra o campo seguinte, que vem como
+            # "RÓTULO: valor" na mesma célula. Vale só aqui — em outros
+            # modelos, valor que começa com "Rótulo: ..." é conteúdo legítimo.
+            valor, encontrado = "", False
         if encontrado or tinha_rotulo:
             # Rótulo presente: sem resposta é ficha em branco, não posição.
             return valor, encontrado, tinha_rotulo
