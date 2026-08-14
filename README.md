@@ -186,23 +186,27 @@ coluna `Nome_Arquivo` repetida deixa a duplicação visível. Atenção ao conta
 para saber quantas **fichas** existem, conte os valores distintos de
 `Nome_Arquivo`, não o número de linhas.
 
-### O que o aplicativo não aceita como valor
+### O que separa um item do outro
 
-Conferindo o acervo real, três tipos de sujeira apareciam nessas colunas. Todos
-são descartados, e a coluna correspondente é apontada em
-`Campos_Nao_Encontrados` quando fica sem nada:
+Além da quebra de linha e do ponto e vírgula, duas coisas aparecem entre os
+itens nas fichas reais e **não** são itens:
 
-* **caractere solto** — caixas de seleção desenhadas em fonte de símbolos
-  deixam uma letra qualquer no texto (o famoso `e`), e há células só com `.`;
-* **remissão a outros itens** — anotações de quem preencheu a ficha no meio da
-  lista (`AC 4,5,7,810,12,13,14`, `C5P1,3CC12,13,16AC3`, `P1`). Sem nenhuma
-  palavra, não descrevem problema, causa, ação nem entrega. Vale só para essas
-  quatro colunas: siglas e códigos (`SSP`, `20803`, `%`) continuam valendo nas
-  suas;
-* **bloco de baixo** — quando o rótulo do campo seguinte foi apagado da ficha,
-  restando a célula em branco, a lista parava só no bloco seguinte e o engolia
-  (as causas críticas iam parar na coluna de problemas). A célula vazia agora
-  encerra a lista.
+* a **letra solta** — o `e` de ligação escrito sozinho na linha antes do último
+  item, e também o caractere que as caixas de seleção em fonte de símbolos
+  deixam no texto;
+* o **ponto solto** — um `.` sozinho, quase sempre erro de digitação.
+
+Os dois são descartados. O corte é só esse: qualquer linha com conteúdo vai
+para a planilha **como está na ficha**, inclusive as anotações de trabalho de
+quem preencheu (`AC 4,5,7,810,12,13,14`, `P1`) — limpar esse tipo de texto é
+tarefa do documento, não do aplicativo. Ponto no meio de uma frase também não
+separa nada: a frase continua inteira.
+
+Uma coisa mais o aplicativo faz sozinho: quando o rótulo do campo seguinte foi
+**apagado da ficha**, restando a célula em branco, a lista parava só no bloco
+de baixo e o engolia (as causas críticas iam parar na coluna de problemas). A
+célula vazia encerra a lista, e o campo sem rótulo é apontado em
+`Campos_Nao_Encontrados`.
 
 Ficha com o campo realmente em branco no Word continua saindo em branco — é o
 documento que está incompleto, e é para isso que serve o `OK_COM_PENDENCIAS`.

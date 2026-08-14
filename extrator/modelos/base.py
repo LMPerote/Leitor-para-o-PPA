@@ -30,10 +30,6 @@ class Campo:
     ocorrencia: int = 0
     #: Se True, concatena todas as células seguintes até o próximo rótulo.
     multiplo: bool = False
-    #: Campo cujos itens são frases (problema, causa, ação, entrega). Nesses,
-    #: linhas que são só remissão a outros itens ("AC 4,5,7,8") são anotação de
-    #: quem preencheu a ficha, não conteúdo, e ficam de fora da planilha.
-    descritivo: bool = False
     #: Nome de um extrator especial de :class:`extrator.parser.Extrator`,
     #: para layouts que fogem do padrão "rótulo -> célula à direita/abaixo".
     extrator: str | None = None

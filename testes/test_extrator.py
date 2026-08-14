@@ -1325,12 +1325,15 @@ def test_celula_vazia_encerra_a_lista(tmp_path: Path):
     assert "Causas_Criticas" in resultado.nao_encontrados
 
 
-def test_remissao_no_meio_da_lista_nao_vira_item(tmp_path: Path):
-    """Anotação de trabalho ("AC 4,5,7,8") no fim da lista de problemas.
+def test_anotacao_de_trabalho_vem_como_esta_na_ficha(tmp_path: Path):
+    """Anotação de quem preencheu ("AC 4,5,7,8") no fim da lista de problemas.
 
-    Reproduz E6-DU-PMelhoriaCond-C2, em que a linha virava três linhas da
-    planilha com um código no lugar do problema.
+    Reproduz E6-DU-PMelhoriaCond-C2. É texto digitado na ficha: o aplicativo
+    traz como está, e a limpeza é feita no documento. Só o que não tem
+    conteúdo algum (uma letra solta, um ponto) é separação entre itens.
     """
+    pasta = tmp_path / "anotacao"
+    pasta.mkdir()
     documento = docx.Document()
     _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
     _tabela_vertical(
@@ -1342,42 +1345,40 @@ def test_remissao_no_meio_da_lista_nao_vira_item(tmp_path: Path):
             "AC 4,5,7,810,12,13,14",
         ],
     )
-    caminho = tmp_path / "remissao.docx"
-    documento.save(caminho)
+    documento.save(pasta / "ficha.docx")
 
-    valores = Extrator(INICIATIVA).extrair(ler_documento(str(caminho))).valores
-    assert valores["Problemas_Vinculados"] == (
-        "P1-Inadequadas condições de acessibilidade\n"
-        "P2-Dificuldades nas condições de mobilidade"
-    )
+    registros, _ = processar_lote(listar_documentos(pasta), pasta)
+    assert [linha["Problemas_Vinculados"] for linha in registros["INICIATIVA"]] == [
+        "P1-Inadequadas condições de acessibilidade",
+        "P2-Dificuldades nas condições de mobilidade",
+        "AC 4,5,7,810,12,13,14",
+    ]
 
 
-def test_lista_so_com_remissao_fica_vazia_e_e_apontada(tmp_path: Path):
-    """Célula que só tem "P1" não descreve problema nenhum."""
+def test_codigo_sozinho_na_celula_continua_valendo(tmp_path: Path):
+    """Célula que só tem "P1" é o que está na ficha, e vai para a planilha."""
     documento = docx.Document()
     _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
     _tabela_vertical(
         documento, ["Problema(s) vinculado(s) ao Compromisso", "P1", "Ação(ões) Crítica(s)"]
     )
-    caminho = tmp_path / "so_remissao.docx"
+    caminho = tmp_path / "codigo.docx"
     documento.save(caminho)
 
     resultado = Extrator(INICIATIVA).extrair(ler_documento(str(caminho)))
-    assert resultado.valores["Problemas_Vinculados"] == ""
-    assert "Problemas_Vinculados" in resultado.nao_encontrados
+    assert resultado.valores["Problemas_Vinculados"] == "P1"
+    assert "Problemas_Vinculados" not in resultado.nao_encontrados
 
 
-def test_remissao_nao_mexe_em_campo_de_codigo(tmp_path: Path):
-    """A regra vale só nos campos descritivos: siglas e códigos continuam."""
-    from extrator.parser import eh_referencia
+def test_ligacao_solta_nao_mexe_em_campo_de_codigo(tmp_path: Path):
+    """A regra derruba letra solta e pontuação; sigla e código continuam."""
+    from extrator.parser import sem_ligacoes_soltas
 
-    assert eh_referencia("AC 4,5,7,810,12,13,14")
-    assert eh_referencia("C5P1,3CC12,13,16AC3")
-    assert eh_referencia("P1")
-    # Texto de verdade, por mais curto que seja, não é remissão.
-    assert not eh_referencia("Sedentarismo")
-    assert not eh_referencia("Não identificado")
-    assert not eh_referencia("AC4-Investir em ações de mobilidade")
+    assert sem_ligacoes_soltas("P1 Violência\ne\nP2 Racismo") == "P1 Violência\nP2 Racismo"
+    assert sem_ligacoes_soltas("P1 Violência\n.\nP2 Racismo") == "P1 Violência\nP2 Racismo"
+    # Texto com conteúdo, por mais curto ou codificado que seja, permanece.
+    for texto in ("AC 4,5,7,810,12,13,14", "C5P1,3CC12,13,16AC3", "P1", "Sedentarismo"):
+        assert sem_ligacoes_soltas(texto) == texto
 
     documento = docx.Document()
     _tabela_vertical(documento, ["ATRIBUTOS DA INICIATIVA"])

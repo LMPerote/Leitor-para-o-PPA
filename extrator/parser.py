@@ -56,39 +56,31 @@ def eh_rotulo(texto: str) -> bool:
     return casa(_REGEX_ROTULOS, texto)
 
 
-#: Uma "palavra de conteúdo": três letras seguidas. Códigos de remissão
-#: ("AC 4,5,7", "C5P1,3CC12", "P1") nunca chegam a ter uma.
-_REGEX_PALAVRA = re.compile(r"[^\W\d_]{3,}")
-
-
-def eh_referencia(texto: str) -> bool:
-    """True se a linha é só uma remissão a outros itens, e não o item.
-
-    No meio das listas das fichas aparecem anotações de trabalho de quem
-    preencheu — "AC 4,5,7,810,12,13,14", "C5P1,3CC12,13,16AC3", "P1" — que
-    apontam para outros itens em vez de descrever um. Sem palavra alguma, não
-    são conteúdo.
-    """
-    valor = limpar(texto)
-    return bool(valor) and not _REGEX_PALAVRA.search(valor)
-
-
-def sem_referencias(texto: str) -> str:
-    """Devolve o texto sem as linhas de remissão (ver :func:`eh_referencia`)."""
-    linhas = [linha for linha in texto.split("\n") if not eh_referencia(linha)]
-    return "\n".join(linhas).strip()
-
-
 def tem_conteudo(texto: str, minimo: int = 1) -> bool:
     """True se o texto é resposta de verdade, e não sujeira de formulário.
 
-    Descarta células que só têm pontuação (".", "-", "–") e, quando ``minimo``
-    é 2, também as de um caractere solto. Esse caractere aparece muito nas
-    fichas: caixas de seleção desenhadas em fonte de símbolos (Wingdings)
-    guardam no texto uma letra qualquer — o "e" que vinha parar na coluna de
-    problemas — e listas vazias às vezes ficam com um marcador órfão.
+    Descarta o que só tem pontuação (".", "-", "–") e, quando ``minimo`` é 2,
+    também o caractere solto. Esse caractere aparece muito nas fichas: caixas
+    de seleção desenhadas em fonte de símbolos guardam no texto uma letra
+    qualquer — o "e" que vinha parar na coluna de problemas.
     """
     return len(chave(texto)) >= minimo
+
+
+def sem_ligacoes_soltas(texto: str) -> str:
+    """Devolve o texto sem as linhas que separam itens em vez de descrever um.
+
+    Nas fichas, a lista costuma vir com o "e" de ligação sozinho na linha
+    antes do último item, e às vezes sobra um "." de digitação. Uma letra
+    solta ou só pontuação não é problema, causa, ação nem entrega: é separação
+    entre itens, e não pode virar uma linha da planilha.
+
+    O que tem conteúdo é preservado como está na ficha — inclusive as
+    anotações de trabalho de quem preencheu ("AC 4,5,7,810,12,13,14"): a
+    limpeza desse tipo de texto é feita no documento, não aqui.
+    """
+    linhas = [linha for linha in texto.split("\n") if tem_conteudo(linha, 2)]
+    return "\n".join(linhas).strip()
 
 
 def classificar(documento: Documento) -> Modelo | None:
@@ -316,13 +308,13 @@ class Extrator:
         críticas costumam vir em uma única célula separadas por quebra manual,
         e quem escolhe ``--separador ponto-virgula`` espera "a; b; c".
 
-        Em campo descritivo, as linhas de remissão são descartadas (ver
-        :func:`eh_referencia`).
+        Em campo de lista, as linhas que só ligam ou separam itens saem fora
+        (ver :func:`sem_ligacoes_soltas`).
         """
         if self.separador != "\n":
             itens = [linha for item in itens for linha in item.split("\n")]
-        if campo is not None and campo.descritivo:
-            itens = [texto for texto in map(sem_referencias, itens) if texto]
+        if campo is not None and campo.multiplo:
+            itens = [texto for texto in map(sem_ligacoes_soltas, itens) if texto]
         return juntar(itens, self.separador)
 
     def _valor_por_padrao(self, padrao: str, secao: str | None) -> str:
