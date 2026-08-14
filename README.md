@@ -3,8 +3,8 @@
 Aplicação (com **janela gráfica** e também linha de comando) que varre uma pasta com **centenas/milhares** de
 fichas de planejamento governamental em Word (`.docx`), **identifica
 automaticamente o tipo de cada documento** e consolida tudo em **três planilhas
-Excel**, com **uma linha por problema, causa crítica e ação crítica que se
-correspondem** dentro da mesma ficha:
+Excel**, com **uma linha por problema, causa crítica, ação crítica e entrega
+que se correspondem** dentro da mesma ficha:
 
 | Tipo do documento | Reconhecido por | Planilha gerada |
 |---|---|---|
@@ -12,10 +12,11 @@ correspondem** dentro da mesma ficha:
 | Iniciativa | seção `VÍNCULO DA INICIATIVA` | `Iniciativas.xlsx` |
 | Ficha de Controle | `NOME DO DIRETÓRIO DO COMPROMISSO` | `Controles.xlsx` |
 
-Os dois tipos podem estar misturados na mesma pasta. Campos com vários itens
-(ex.: *Causa(s) Crítica(s)*, *Ação(ões) Crítica(s)*, propostas de escuta social,
-ações orçamentárias) são unidos em um único texto, ficando confinados na célula
-da respectiva coluna.
+Os dois tipos podem estar misturados na mesma pasta. *Problema(s)*,
+*Causa(s) Crítica(s)*, *Ação(ões) Crítica(s)* e *Entrega(s) Vinculada(s)* são
+divididos **um por linha** da planilha. Os demais campos com vários itens
+(propostas de escuta social, ações orçamentárias, recursos) continuam unidos em
+um único texto, confinados na célula da respectiva coluna.
 
 ---
 
@@ -154,23 +155,28 @@ apareça na pasta. Formatação aplicada: cabeçalho em **negrito** com fundo az
 escuro e texto branco, linha de cabeçalho congelada, filtro automático, largura de colunas
 ajustada e células com **quebra automática de texto** e alinhamento superior.
 
-### Uma linha por problema, causa crítica e ação crítica
+### Uma linha por problema, causa crítica, ação crítica e entrega
 
-A granularidade da planilha é a **trinca** problema + causa crítica + ação
-crítica: cada linha traz um de cada, pareados pela ordem em que aparecem na
-ficha. Uma ficha com 6 causas críticas gera 6 linhas, repetindo todas as demais
-colunas — inclusive o problema, quantas vezes for preciso. Nada é agrupado nem
-deduplicado.
+A granularidade da planilha é o **conjunto** problema + causa crítica + ação
+crítica + entrega vinculada: cada linha traz **um item de cada**, pareados pela
+ordem em que aparecem na ficha. Uma ficha com 6 causas críticas gera 6 linhas,
+repetindo todas as demais colunas — inclusive o problema, quantas vezes for
+preciso. Nada é agrupado nem deduplicado: item repetido ocupa a sua própria
+linha.
 
 Quando uma das listas é menor que as outras, seu último item se repete nas
-linhas restantes. Uma ficha com 4 problemas, 1 causa e 3 ações gera:
+linhas restantes. Uma ficha com 4 problemas, 1 causa, 3 ações e 2 entregas gera:
 
-| linha | problema | causa crítica | ação crítica |
-|---|---|---|---|
-| 1 | P1 | C1 | A1 |
-| 2 | P2 | C1 | A2 |
-| 3 | P3 | C1 | A3 |
-| 4 | P4 | C1 | A3 |
+| linha | problema | causa crítica | ação crítica | entrega |
+|---|---|---|---|---|
+| 1 | P1 | C1 | A1 | E1 |
+| 2 | P2 | C1 | A2 | E2 |
+| 3 | P3 | C1 | A3 | E2 |
+| 4 | P4 | C1 | A3 | E2 |
+
+Os itens são reconhecidos tanto quando vêm **um por linha** na célula do Word
+quanto quando vêm **digitados seguidos**, separados por ponto e vírgula
+(`P1 ...; P2 ...;`) — nos dois casos cada um ganha a sua linha na planilha.
 
 Ficha com um único item de cada — ou sem nenhum — continua gerando uma linha
 só, e nenhum arquivo deixa de aparecer na planilha.

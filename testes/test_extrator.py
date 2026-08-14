@@ -704,13 +704,15 @@ def test_ficha_com_dois_problemas_gera_duas_linhas(tmp_path: Path):
     assert estatisticas.linhas["INDICADOR"] == 2
 
 
-def test_iniciativa_gera_uma_linha_por_causa_e_acao(pasta: Path):
-    """A ficha de exemplo tem 1 problema, 2 causas e 2 ações -> 2 linhas."""
+def test_iniciativa_gera_uma_linha_por_causa_acao_e_entrega(pasta: Path):
+    """A ficha tem 1 problema, 2 causas, 2 ações e 2 entregas -> 2 linhas."""
     registros, _ = processar_lote(listar_documentos(pasta), pasta)
     linhas = registros["INICIATIVA"]
     assert len(linhas) == 2
     assert [linha["Causas_Criticas"] for linha in linhas] == ["Causa A.", "Causa B."]
     assert [linha["Acoes_Criticas"] for linha in linhas] == ["Ação 1.", "Ação 2."]
+    # A entrega também é dividida: uma por linha, e não empilhada na célula.
+    assert [linha["Entregas_Vinculadas"] for linha in linhas] == ["Entrega 1", "Entrega 2"]
     # O problema é um só: se repete nas duas linhas.
     assert {linha["Problemas_Vinculados"] for linha in linhas} == {"Problema da iniciativa"}
     # As demais colunas acompanham a ficha inteira.
@@ -719,24 +721,24 @@ def test_iniciativa_gera_uma_linha_por_causa_e_acao(pasta: Path):
 
 
 def test_expansao_respeita_o_separador_escolhido():
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": "A; B; C"}
-    linhas = expandir_por_problema(registro, "; ")
+    linhas = expandir_em_linhas(registro, "; ")
     assert [linha["Problemas_Vinculados"] for linha in linhas] == ["A", "B", "C"]
     assert all(linha["Nome_Arquivo"] == "f.docx" for linha in linhas)
 
 
 def test_ficha_sem_problema_nao_some_da_planilha():
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": ""}
-    assert expandir_por_problema(registro, "\n") == [registro]
+    assert expandir_em_linhas(registro, "\n") == [registro]
 
 
 def test_problema_causa_e_acao_sao_pareados_pela_ordem():
     """Cada linha traz a trinca que se corresponde dentro da mesma ficha."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
@@ -744,7 +746,7 @@ def test_problema_causa_e_acao_sao_pareados_pela_ordem():
         "Causas_Criticas": "C1\nC2\nC3",
         "Acoes_Criticas": "A1\nA2\nA3",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert [
         (l["Problemas_Vinculados"], l["Causas_Criticas"], l["Acoes_Criticas"]) for l in linhas
     ] == [("P1", "C1", "A1"), ("P2", "C2", "A2"), ("P3", "C3", "A3")]
@@ -752,7 +754,7 @@ def test_problema_causa_e_acao_sao_pareados_pela_ordem():
 
 def test_lista_menor_repete_o_ultimo_item():
     """4 problemas, 1 causa e 3 ações viram 4 linhas, como na planilha de vínculo."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
@@ -760,7 +762,7 @@ def test_lista_menor_repete_o_ultimo_item():
         "Causas_Criticas": "C1",
         "Acoes_Criticas": "A1\nA2\nA3",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert [
         (l["Problemas_Vinculados"], l["Causas_Criticas"], l["Acoes_Criticas"]) for l in linhas
     ] == [("P1", "C1", "A1"), ("P2", "C1", "A2"), ("P3", "C1", "A3"), ("P4", "C1", "A3")]
@@ -768,7 +770,7 @@ def test_lista_menor_repete_o_ultimo_item():
 
 def test_mais_causas_que_problemas_repete_o_problema():
     """Um problema que vale para várias causas aparece repetido, sem deduplicar."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
@@ -776,7 +778,7 @@ def test_mais_causas_que_problemas_repete_o_problema():
         "Causas_Criticas": "C1\nC2\nC3\nC4",
         "Acoes_Criticas": "A1\nA2\nA3\nA4",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert len(linhas) == 4
     assert all(linha["Problemas_Vinculados"] == "P1" for linha in linhas)
     assert [linha["Causas_Criticas"] for linha in linhas] == ["C1", "C2", "C3", "C4"]
@@ -784,16 +786,81 @@ def test_mais_causas_que_problemas_repete_o_problema():
 
 def test_expansao_nao_cria_coluna_que_o_modelo_nao_tem():
     """A ficha de Indicador não tem ações críticas; a coluna não é inventada."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
         "Problemas_Vinculados": "P1",
         "Causas_Criticas": "C1\nC2",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert len(linhas) == 2
     assert all("Acoes_Criticas" not in linha for linha in linhas)
+
+
+def test_entrega_tambem_vira_uma_linha_por_item():
+    """A entrega entra na mesma regra: 3 entregas geram 3 linhas."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {
+        "Nome_Arquivo": "f.docx",
+        "Problemas_Vinculados": "P1",
+        "Causas_Criticas": "C1",
+        "Acoes_Criticas": "A1",
+        "Entregas_Vinculadas": "E1\nE2\nE3",
+    }
+    linhas = expandir_em_linhas(registro, "\n")
+    assert [linha["Entregas_Vinculadas"] for linha in linhas] == ["E1", "E2", "E3"]
+    # O trio se repete nas três linhas, sem agrupar nem deduplicar.
+    assert all(
+        (l["Problemas_Vinculados"], l["Causas_Criticas"], l["Acoes_Criticas"])
+        == ("P1", "C1", "A1")
+        for l in linhas
+    )
+
+
+def test_itens_digitados_na_mesma_linha_sao_divididos():
+    """Lista escrita seguida ("P1 ...; P2 ...;") também vira uma linha por item."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {
+        "Nome_Arquivo": "f.docx",
+        "Problemas_Vinculados": "P1 Violência contra jovens; P2 Racismo institucional;",
+        "Entregas_Vinculadas": "Carnaval; Festas populares",
+    }
+    linhas = expandir_em_linhas(registro, "\n")
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == [
+        "P1 Violência contra jovens",
+        "P2 Racismo institucional",
+    ]
+    assert [linha["Entregas_Vinculadas"] for linha in linhas] == [
+        "Carnaval",
+        "Festas populares",
+    ]
+
+
+def test_item_repetido_ocupa_a_propria_linha():
+    """Repetição é preservada: cada ocorrência vale uma linha."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {
+        "Nome_Arquivo": "f.docx",
+        "Problemas_Vinculados": "P1\nP1\nP2",
+        "Causas_Criticas": "C1\nC1\nC1",
+    }
+    linhas = expandir_em_linhas(registro, "\n")
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == ["P1", "P1", "P2"]
+    assert [linha["Causas_Criticas"] for linha in linhas] == ["C1", "C1", "C1"]
+
+
+def test_divisao_normaliza_item_unico():
+    """Um item só continua gerando uma linha, sem o separador sobrando."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": "P1;"}
+    linhas = expandir_em_linhas(registro, "\n")
+    assert len(linhas) == 1
+    assert linhas[0]["Problemas_Vinculados"] == "P1"
 
 
 # ---------------------------------------------------------------------------

@@ -33,8 +33,8 @@ class Estatisticas:
     #: código do modelo -> quantidade de arquivos processados.
     processados: dict[str, int] = field(default_factory=dict)
     #: código do modelo -> linhas geradas na planilha. Difere de
-    #: ``processados`` quando a ficha traz mais de um problema, causa crítica
-    #: ou ação crítica.
+    #: ``processados`` quando a ficha traz mais de um problema, causa crítica,
+    #: ação crítica ou entrega vinculada.
     linhas: dict[str, int] = field(default_factory=dict)
     #: código do modelo -> quantidade com algum campo não localizado.
     com_pendencias: dict[str, int] = field(default_factory=dict)
@@ -116,19 +116,42 @@ def processar_arquivo(
 
 
 #: Colunas que definem a granularidade da planilha: uma linha por problema,
-#: causa crítica e ação crítica que se correspondem dentro da mesma ficha.
+#: causa crítica, ação crítica e entrega que se correspondem dentro da mesma
+#: ficha.
 COLUNA_PROBLEMA = "Problemas_Vinculados"
 COLUNA_CAUSA = "Causas_Criticas"
 COLUNA_ACAO = "Acoes_Criticas"
-COLUNAS_EXPANDIDAS: tuple[str, ...] = (COLUNA_PROBLEMA, COLUNA_CAUSA, COLUNA_ACAO)
+COLUNA_ENTREGA = "Entregas_Vinculadas"
+COLUNAS_EXPANDIDAS: tuple[str, ...] = (
+    COLUNA_PROBLEMA,
+    COLUNA_CAUSA,
+    COLUNA_ACAO,
+    COLUNA_ENTREGA,
+)
+
+#: Marcas que separam itens dentro de uma mesma célula, além do separador
+#: escolhido na execução: a quebra de linha (como a ficha lista os itens no
+#: Word) e o ponto e vírgula (como as listas chegam digitadas em uma linha só).
+MARCAS_DE_ITEM: tuple[str, ...] = ("\n", ";")
 
 
-def _itens(registro: dict[str, str], coluna: str, separador: str) -> list[str]:
-    """Itens de uma célula que reúne vários (um por linha, no padrão da ficha)."""
-    valor = registro.get(coluna, "")
+def dividir_em_itens(valor: str, separador: str) -> list[str]:
+    """Quebra a célula em itens individuais, um por linha da planilha.
+
+    Divide pelo separador configurado e também por quebra de linha e ponto e
+    vírgula, porque a mesma lista chega das duas formas nas fichas: itens em
+    linhas separadas da célula do Word ("Entrega A⏎Entrega B") ou digitados
+    seguidos ("P1 ...; P2 ...;"). Itens repetidos são preservados: cada
+    ocorrência vale uma linha.
+    """
     if not valor:
         return []
-    return [parte.strip() for parte in valor.split(separador) if parte.strip()]
+
+    texto = valor
+    for marca in dict.fromkeys((separador, *MARCAS_DE_ITEM)):
+        if marca and marca != "\n":
+            texto = texto.replace(marca, "\n")
+    return [parte.strip() for parte in texto.split("\n") if parte.strip()]
 
 
 def _item_na_posicao(itens: list[str], posicao: int) -> str:
@@ -146,27 +169,28 @@ def _item_na_posicao(itens: list[str], posicao: int) -> str:
     return itens[-1]
 
 
-def expandir_por_problema(
+def expandir_em_linhas(
     registro: dict[str, str], separador: str
 ) -> list[dict[str, str]]:
-    """Desdobra o registro em uma linha por problema + causa + ação críticas.
+    """Desdobra o registro em uma linha por problema, causa, ação e entrega.
 
     A regra de negócio é "um por linha": cada linha traz um problema, uma causa
-    crítica e uma ação crítica que se correspondem, pareados pela ordem em que
-    aparecem na ficha. Quando uma das listas é menor que as outras, seu último
-    item se repete nas linhas restantes — nada é agrupado nem deduplicado, e o
-    mesmo problema aparece quantas vezes for preciso. As demais colunas se
-    repetem em todas as linhas da ficha.
+    crítica, uma ação crítica e uma entrega vinculada, pareados pela ordem em
+    que aparecem na ficha. Quando uma das listas é menor que as outras, seu
+    último item se repete nas linhas restantes — nada é agrupado nem
+    deduplicado, e o mesmo item aparece em quantas linhas for preciso. As demais
+    colunas se repetem em todas as linhas da ficha.
 
     Ficha com um único item de cada (ou nenhum) continua gerando uma linha só,
     para que todo arquivo apareça na planilha.
     """
-    if not separador:
-        return [registro]
-
-    listas = {coluna: _itens(registro, coluna, separador) for coluna in COLUNAS_EXPANDIDAS}
+    listas = {
+        coluna: dividir_em_itens(registro.get(coluna, ""), separador)
+        for coluna in COLUNAS_EXPANDIDAS
+    }
     total = max(len(itens) for itens in listas.values())
-    if total <= 1:
+    if total == 0:
+        # Ficha sem nenhum desses itens continua aparecendo na planilha.
         return [registro]
 
     return [
@@ -205,7 +229,7 @@ def processar_lote(
                 Ocorrencia(caminho.name, motivo or "motivo desconhecido")
             )
         else:
-            linhas = expandir_por_problema(registro, separador)
+            linhas = expandir_em_linhas(registro, separador)
             registros[modelo.codigo].extend(linhas)
             estatisticas.processados[modelo.codigo] = (
                 estatisticas.processados.get(modelo.codigo, 0) + 1
