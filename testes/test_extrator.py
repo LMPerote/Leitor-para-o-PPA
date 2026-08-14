@@ -1520,3 +1520,34 @@ def test_aviso_convive_com_o_de_campo_sem_valor(tmp_path: Path):
     assert "campo(s) sem valor" in linha["Observacoes"]
     assert "sem descrição" in linha["Observacoes"]
     assert linha["Status"] == "OK_COM_PENDENCIAS"
+
+
+def test_simbolo_e_resposta_legitima_em_campo_de_valor_unico(tmp_path: Path):
+    """Reproduz a grade real dos atributos, com "%" e "-" como resposta.
+
+    Recusar o símbolo fazia a busca descer a coluna, pular o rótulo seguinte e
+    trazer o valor do bloco de baixo: a periodicidade virava unidade de medida
+    e a polaridade virava ano de referência.
+    """
+    documento = docx.Document()
+    _tabela_vertical(documento, ["ATRIBUTOS DO INDICADOR DE COMPROMISSO"])
+    _tabela_grade(
+        documento,
+        [
+            ["Unidade de medida", "Valor de referência", "Ano de referência"],
+            ["%", "-", "-"],
+            ["Periodicidade da apuração", "Polaridade", "Classificação"],
+            ["Quadrimestral", "Positiva", "Produto"],
+        ],
+    )
+    caminho = tmp_path / "atributos.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+    assert valores["Unidade_Medida"] == "%"
+    assert valores["Valor_Referencia"] == "-"
+    assert valores["Ano_Referencia"] == "-"
+    # E o bloco de baixo continua no lugar dele.
+    assert valores["Periodicidade_Apuracao"] == "Quadrimestral"
+    assert valores["Polaridade"] == "Positiva"
+    assert valores["Classificacao"] == "Produto"

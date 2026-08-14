@@ -254,8 +254,14 @@ class Extrator:
 
         Em campo de lista (``multiplo``) exige pelo menos dois caracteres
         úteis: são as colunas onde a sujeira das caixas de seleção aparecia.
+
+        Em campo de valor único, qualquer texto serve. Símbolo é resposta
+        legítima aqui — "%" é unidade de medida, "-" é o "não se aplica" de
+        quem preencheu — e recusá-lo era pior do que aceitá-lo: a busca seguia
+        descendo a coluna e trazia o valor do bloco de baixo (a periodicidade
+        virava unidade de medida, a polaridade virava ano de referência).
         """
-        return tem_conteudo(texto, 2 if campo.multiplo else 1)
+        return tem_conteudo(texto, 2) if campo.multiplo else bool(limpar(texto))
 
     def _valor_na_tabela(self, tabela: Tabela, no: No, campo: Campo) -> str:
         """Procura o valor à direita e, em seguida, abaixo do rótulo."""
