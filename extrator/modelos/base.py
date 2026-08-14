@@ -57,7 +57,10 @@ DESCRICOES_AUDITORIA: dict[str, str] = {
         "Colunas sem valor: rótulo não localizado no documento ou localizado "
         "sem resposta preenchida."
     ),
-    "Observacoes": "Mensagem de erro ou aviso gerado durante o processamento.",
+    "Observacoes": (
+        "Avisos do processamento: campos sem valor e itens que remetem a outro "
+        "item em vez de descrever um (nesse caso o texto continua na planilha)."
+    ),
 }
 
 

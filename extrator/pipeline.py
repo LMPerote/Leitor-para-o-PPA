@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,6 +39,9 @@ class Estatisticas:
     linhas: dict[str, int] = field(default_factory=dict)
     #: código do modelo -> quantidade com algum campo não localizado.
     com_pendencias: dict[str, int] = field(default_factory=dict)
+    #: código do modelo -> quantidade de arquivos com algum item que remete a
+    #: outro item em vez de descrever um (ver :func:`itens_sem_descricao`).
+    com_itens_sem_descricao: dict[str, int] = field(default_factory=dict)
     #: arquivos ignorados (tipo não reconhecido) ou com erro de leitura.
     ignorados: list[Ocorrencia] = field(default_factory=list)
     #: código do modelo -> coluna -> nº de arquivos em que o rótulo faltou.
@@ -61,7 +65,10 @@ def listar_documentos(pasta: Path, recursivo: bool = True) -> list[Path]:
 
 
 def processar_arquivo(
-    caminho: Path, extratores: dict[str, Extrator], pasta_base: Path
+    caminho: Path,
+    extratores: dict[str, Extrator],
+    pasta_base: Path,
+    separador: str = "\n",
 ) -> tuple[Modelo | None, dict[str, str] | None, str | None]:
     """Lê, classifica e extrai um documento.
 
@@ -96,10 +103,11 @@ def processar_arquivo(
         "Caminho_Relativo": relativo,
         **resultado.valores,
     }
+    observacoes: list[str] = []
     if resultado.nao_encontrados:
         registro["Status"] = "OK_COM_PENDENCIAS"
         registro["Campos_Nao_Encontrados"] = "; ".join(resultado.nao_encontrados)
-        registro["Observacoes"] = (
+        observacoes.append(
             f"{len(resultado.nao_encontrados)} campo(s) sem valor "
             "(rótulo não localizado ou sem resposta preenchida)."
         )
@@ -112,7 +120,20 @@ def processar_arquivo(
     else:
         registro["Status"] = "OK"
         registro["Campos_Nao_Encontrados"] = ""
-        registro["Observacoes"] = ""
+
+    # Aviso (não altera nenhum dado): itens que remetem a outro item em vez de
+    # descrever um. O texto continua na planilha como está na ficha.
+    achados = itens_sem_descricao(registro, separador)
+    if achados:
+        observacoes.append(_aviso_de_itens(achados))
+        logger.debug(
+            "'%s' (%s): itens sem descrição -> %s",
+            caminho.name,
+            modelo.rotulo,
+            ", ".join(f"{coluna}={item!r}" for coluna, item in achados),
+        )
+
+    registro["Observacoes"] = " ".join(observacoes)
     return modelo, registro, None
 
 
@@ -153,6 +174,54 @@ def dividir_em_itens(valor: str, separador: str) -> list[str]:
         if marca and marca != "\n":
             texto = texto.replace(marca, "\n")
     return [parte.strip() for parte in texto.split("\n") if parte.strip()]
+
+
+#: Uma "palavra de conteúdo": três letras seguidas. Um item que não tem
+#: nenhuma ("AC 4,5,7,810,12,13,14", "C5P1,3CC12,13,16AC3", "P1") remete a
+#: outro item em vez de descrever um: é anotação de quem preencheu a ficha.
+_REGEX_PALAVRA = re.compile(r"[^\W\d_]{3,}")
+
+#: Quantos itens citar no aviso antes de resumir o restante.
+MAXIMO_ITENS_CITADOS = 3
+#: Tamanho máximo de um item citado no aviso.
+LIMITE_ITEM_CITADO = 60
+
+
+def itens_sem_descricao(registro: dict[str, str], separador: str) -> list[tuple[str, str]]:
+    """Pares ``(coluna, item)`` que remetem a outro item em vez de descrever.
+
+    Serve só para **avisar**: nada é removido da planilha. O texto está
+    digitado na ficha e vai para a linha dele como está; o aviso é para
+    localizar as fichas que precisam de correção no documento.
+    """
+    return [
+        (coluna, item)
+        for coluna in COLUNAS_EXPANDIDAS
+        for item in dividir_em_itens(registro.get(coluna, ""), separador)
+        if not _REGEX_PALAVRA.search(item)
+    ]
+
+
+def _aviso_de_itens(achados: list[tuple[str, str]]) -> str:
+    """Monta o aviso de ``Observacoes`` a partir dos itens sem descrição."""
+    por_coluna: dict[str, list[str]] = {}
+    for coluna, item in achados:
+        por_coluna.setdefault(coluna, []).append(item)
+
+    avisos = []
+    for coluna, itens in por_coluna.items():
+        citados = [
+            item if len(item) <= LIMITE_ITEM_CITADO else item[:LIMITE_ITEM_CITADO] + "..."
+            for item in itens[:MAXIMO_ITENS_CITADOS]
+        ]
+        amostra = ", ".join(f'"{item}"' for item in citados)
+        if len(itens) > MAXIMO_ITENS_CITADOS:
+            amostra += f" e mais {len(itens) - MAXIMO_ITENS_CITADOS}"
+        plural = "itens" if len(itens) > 1 else "item"
+        avisos.append(
+            f"{coluna}: {len(itens)} {plural} sem descrição ({amostra}) — conferir a ficha."
+        )
+    return " ".join(avisos)
 
 
 def _item_na_posicao(itens: list[str], posicao: int) -> str:
@@ -223,7 +292,9 @@ def processar_lote(
     estatisticas = Estatisticas(total=len(arquivos))
 
     for caminho in arquivos:
-        modelo, registro, motivo = processar_arquivo(caminho, extratores, pasta_base)
+        modelo, registro, motivo = processar_arquivo(
+            caminho, extratores, pasta_base, separador
+        )
 
         if modelo is None or registro is None:
             estatisticas.ignorados.append(
@@ -241,6 +312,10 @@ def processar_lote(
             if registro["Status"] == "OK_COM_PENDENCIAS":
                 estatisticas.com_pendencias[modelo.codigo] = (
                     estatisticas.com_pendencias.get(modelo.codigo, 0) + 1
+                )
+            if "sem descrição" in registro["Observacoes"]:
+                estatisticas.com_itens_sem_descricao[modelo.codigo] = (
+                    estatisticas.com_itens_sem_descricao.get(modelo.codigo, 0) + 1
                 )
             ausentes = estatisticas.campos_ausentes.setdefault(modelo.codigo, {})
             for coluna in filter(None, registro["Campos_Nao_Encontrados"].split("; ")):

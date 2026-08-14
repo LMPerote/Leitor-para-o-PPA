@@ -202,6 +202,17 @@ quem preencheu (`AC 4,5,7,810,12,13,14`, `P1`) — limpar esse tipo de texto é
 tarefa do documento, não do aplicativo. Ponto no meio de uma frase também não
 separa nada: a frase continua inteira.
 
+Essas anotações **não somem, mas são avisadas**. Quando um item não tem nenhuma
+palavra — ou seja, remete a outro item em vez de descrever um —, a coluna
+`Observacoes` recebe o aviso e o relatório final conta as fichas:
+
+```
+Problemas_Vinculados: 1 item sem descrição ("AC 4,5,7,810,12,13,14") — conferir a ficha.
+```
+
+Para achar essas fichas na planilha, filtre `Observacoes` por *contém*
+`sem descrição`. Nenhum dado é alterado: o aviso é só um apontamento.
+
 Uma coisa mais o aplicativo faz sozinho: quando o rótulo do campo seguinte foi
 **apagado da ficha**, restando a célula em branco, a lista parava só no bloco
 de baixo e o engolia (as causas críticas iam parar na coluna de problemas). A
@@ -275,7 +286,8 @@ Total dos Recursos: R$ 2.400.000,00
 * `Status` — `OK` (todos os rótulos localizados) ou `OK_COM_PENDENCIAS`.
 * `Campos_Nao_Encontrados` — colunas sem valor: o rótulo não existe naquele
   documento ou existe sem resposta preenchida.
-* `Observacoes` — avisos do processamento.
+* `Observacoes` — avisos do processamento: campos sem valor e itens que
+  remetem a outro item em vez de descrever um (o texto continua na planilha).
 
 Arquivos corrompidos ou de tipo não reconhecido **não entram nas planilhas**:
 são listados no relatório final e no log, e **nunca interrompem o lote**.

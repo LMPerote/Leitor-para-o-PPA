@@ -38,6 +38,12 @@ def montar_relatorio(
             )
         if pendentes:
             linhas.append(f"  - {pendentes} com algum campo sem valor.")
+        sem_descricao = estatisticas.com_itens_sem_descricao.get(modelo.codigo, 0)
+        if sem_descricao:
+            linhas.append(
+                f"  - {sem_descricao} com item que remete a outro em vez de "
+                "descrever (ver Observacoes)."
+            )
         if modelo.codigo in destinos:
             linhas.append(f"  - planilha: {destinos[modelo.codigo]}")
 

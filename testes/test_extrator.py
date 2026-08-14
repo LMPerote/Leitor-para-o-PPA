@@ -1441,3 +1441,82 @@ def test_ponto_final_dentro_da_frase_nao_separa(tmp_path: Path):
     assert linhas[0]["Problemas_Vinculados"] == (
         "P1 Baixa cobertura. A rede não alcança o interior. Faltam equipes."
     )
+
+
+# ---------------------------------------------------------------------------
+# Aviso de itens que remetem a outro item em vez de descrever um
+# ---------------------------------------------------------------------------
+def _ficha_com_anotacao(pasta: Path) -> None:
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1-Inadequadas condições de acessibilidade\nAC 4,5,7,810,12,13,14",
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+
+def test_item_sem_descricao_e_avisado_sem_sumir_da_planilha(tmp_path: Path):
+    """O texto continua na linha dele; o aviso só aponta a ficha a conferir."""
+    pasta = tmp_path / "aviso"
+    pasta.mkdir()
+    _ficha_com_anotacao(pasta)
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    linhas = registros["INICIATIVA"]
+
+    # O dado não some: a anotação ocupa a linha dela, como está na ficha.
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == [
+        "P1-Inadequadas condições de acessibilidade",
+        "AC 4,5,7,810,12,13,14",
+    ]
+    for linha in linhas:
+        assert 'Problemas_Vinculados: 1 item sem descrição ("AC 4,5,7,810,12,13,14")' in (
+            linha["Observacoes"]
+        )
+    assert estatisticas.com_itens_sem_descricao["INICIATIVA"] == 1
+
+
+def test_ficha_sem_anotacao_nao_recebe_aviso(tmp_path: Path):
+    pasta = tmp_path / "limpa"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        ["Problema(s) vinculado(s) ao Compromisso", "P1-Inadequadas condições"],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    assert "sem descrição" not in registros["INICIATIVA"][0]["Observacoes"]
+    assert estatisticas.com_itens_sem_descricao == {}
+
+
+def test_aviso_resume_quando_ha_muitos_itens():
+    from extrator.pipeline import itens_sem_descricao, _aviso_de_itens
+
+    registro = {"Causas_Criticas": "CC1\nCC2\nCC3\nCC4\nCausa de verdade"}
+    achados = itens_sem_descricao(registro, "\n")
+    assert [item for _, item in achados] == ["CC1", "CC2", "CC3", "CC4"]
+
+    aviso = _aviso_de_itens(achados)
+    assert aviso == (
+        'Causas_Criticas: 4 itens sem descrição ("CC1", "CC2", "CC3" e mais 1) '
+        "— conferir a ficha."
+    )
+
+
+def test_aviso_convive_com_o_de_campo_sem_valor(tmp_path: Path):
+    """Ficha com pendência e anotação recebe os dois avisos na mesma célula."""
+    pasta = tmp_path / "dois_avisos"
+    pasta.mkdir()
+    _ficha_com_anotacao(pasta)
+
+    linha = processar_lote(listar_documentos(pasta), pasta)[0]["INICIATIVA"][0]
+    assert "campo(s) sem valor" in linha["Observacoes"]
+    assert "sem descrição" in linha["Observacoes"]
+    assert linha["Status"] == "OK_COM_PENDENCIAS"
