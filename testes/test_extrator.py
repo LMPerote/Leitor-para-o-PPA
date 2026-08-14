@@ -1588,3 +1588,69 @@ def test_relatorio_separa_rotulo_ausente_de_ficha_em_branco(tmp_path: Path):
 
     quadro = montar_dataframe(registros["INICIATIVA"], MODELOS_POR_CODIGO["INICIATIVA"])
     assert not [c for c in quadro.columns if c.startswith("_")]
+
+
+def test_desagregacao_com_pergunta_unica_sim_ou_nao(tmp_path: Path):
+    """Variante do bloco territorial usada nas fichas do E9-IL.
+
+    No lugar do par de caixas "Estado / Território de Identidade", a ficha faz
+    uma pergunta só. Respondida "Não", o resto do bloco fica em branco — e o
+    aplicativo reportava a seção como rótulo ausente, jogando fora a única
+    informação que existia ali.
+    """
+    documento = docx.Document()
+    _tabela_grade(
+        documento,
+        [
+            [
+                "Bloco 3: DESAGREGAÇÃO TERRITORIAL\n"
+                "Desagregação territorial/regional (Opção: sim ou não?)",
+                "",
+                "",
+            ],
+            ["", "x", "Não"],
+            ["Fórmula de cálculo Territorial", "", "Unidade de Medida"],
+            ["", "", ""],
+            ["Território de Identidade", "Memória de Cálculo Territorial", "Meta Territorial"],
+            ["", "", ""],
+        ],
+    )
+    caminho = tmp_path / "territorial_variante.docx"
+    documento.save(caminho)
+
+    resultado = Extrator(INDICADOR).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Desagregacao_Territorial"] == (
+        "Desagregação territorial/regional: Não"
+    )
+    assert "Desagregacao_Territorial" not in resultado.nao_encontrados
+    assert "Desagregacao_Territorial" not in resultado.rotulos_ausentes
+
+
+def test_desagregacao_com_as_duas_opcoes_usa_a_marcada(tmp_path: Path):
+    """Quando "Sim" e "Não" aparecem, vale a que está marcada."""
+    documento = docx.Document()
+    _tabela_grade(
+        documento,
+        [
+            ["Bloco 3: DESAGREGAÇÃO TERRITORIAL\nDesagregação territorial/regional?", "", "", ""],
+            ["Sim", "x", "Não", ""],
+            ["Território de Identidade", "Memória de Cálculo Territorial", "Meta Territorial", ""],
+            ["Metropolitano", "Soma regional", "10", ""],
+        ],
+    )
+    caminho = tmp_path / "territorial_duas_opcoes.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+    assert "Desagregação territorial/regional: Sim" in valores["Desagregacao_Territorial"]
+    # E a tabela de territórios continua sendo lida.
+    assert "Metropolitano" in valores["Desagregacao_Territorial"]
+
+
+def test_modelo_padrao_nao_ganha_a_pergunta_unica(pasta: Path):
+    """A ficha com o par de caixas segue exatamente como era."""
+    valores = Extrator(INDICADOR).extrair(
+        ler_documento(str(pasta / "ficha_indicador.docx"))
+    ).valores
+    assert valores["Desagregacao_Territorial"].startswith("Estado: Sim")
+    assert "Desagregação territorial/regional" not in valores["Desagregacao_Territorial"]

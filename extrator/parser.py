@@ -47,6 +47,9 @@ EXATO, EMBUTIDO, PRIMEIRA_LINHA = 0, 1, 2
 #: diferentes versões do modelo.
 _REGEX_TOTAL = re.compile(r"total(dos)?recursos|totaldo?teto")
 
+#: Respostas da pergunta única de desagregação territorial, por chave canônica.
+_RESPOSTAS_SIM_NAO = {"sim": "Sim", "nao": "Não"}
+
 # Divisor "rótulo: valor" dentro de uma mesma célula/parágrafo (uma linha).
 _DIVISOR_INLINE = re.compile(r"^([^:\n]{2,80}?)\s*[:：]\s*(.+?)\s*(?:\n|$)")
 
@@ -483,12 +486,54 @@ class Extrator:
                 itens.append(texto)
         return self._unir_itens(itens)
 
+    def _resposta_sim_ou_nao(self) -> tuple[str, bool]:
+        """Resposta da variante "Desagregação territorial/regional (sim ou não?)".
+
+        Parte das fichas troca o par de caixas "Estado / Território de
+        Identidade" por uma pergunta única, respondida com uma marca ao lado de
+        "Sim" ou de "Não". Sem ler essa resposta, a seção inteira saía vazia —
+        e ainda era reportada como rótulo ausente, quando na verdade a ficha
+        respondeu que não há desagregação (por isso o resto do bloco está em
+        branco).
+        """
+        achados = [
+            (no, _RESPOSTAS_SIM_NAO[chave(no.texto)])
+            for no in self.documento.nos_da_secao("TERRITORIAL")
+            if no.tipo == "celula" and chave(no.texto) in _RESPOSTAS_SIM_NAO
+        ]
+        if not achados:
+            return "", False
+        if len(achados) == 1:
+            # Só a opção escolhida ficou no documento.
+            return achados[0][1], True
+
+        # As duas opções aparecem: vale a que está marcada, na própria célula
+        # ou na vizinha (a marca fica ora antes, ora depois do texto).
+        for no, resposta in achados:
+            celulas = self.documento.tabelas[no.tabela].linha_de_celulas(no.linha)
+            colunas = [coluna for coluna, _ in celulas]
+            if no.coluna not in colunas:  # pragma: no cover - grade irregular
+                continue
+            posicao = colunas.index(no.coluna)
+            vizinhas = [
+                celulas[j][1] for j in (posicao - 1, posicao + 1) if 0 <= j < len(celulas)
+            ]
+            if esta_marcado(no.texto) or any(esta_marcado(t) for t in vizinhas):
+                return resposta, True
+        return achados[0][1], True
+
     def _extrair_desagregacao_territorial(self, campo: Campo) -> tuple[str, bool]:
         """Consolida toda a seção de desagregação territorial em uma célula."""
         estado, encontrada = self._marcacao(r"estado")
         territorio, _ = self._marcacao(r"territoriode?identidade")
 
+        resposta = ""
+        if not encontrada:
+            # Modelo sem o par de caixas: a pergunta é uma só.
+            resposta, encontrada = self._resposta_sim_ou_nao()
+
         itens = [
+            ("Desagregação territorial/regional", resposta),
             ("Estado", estado),
             ("Território de Identidade", territorio),
             (
