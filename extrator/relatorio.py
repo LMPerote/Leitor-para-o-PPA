@@ -62,10 +62,20 @@ def montar_relatorio(
         linhas.append("-" * LARGURA)
         linhas.append(
             f"Campos mais ausentes em {MODELOS_POR_CODIGO[codigo].rotulo} "
-            "(rótulo não localizado ou sem resposta preenchida):"
+            "(nº de fichas; entre parênteses, quantas nem têm o rótulo):"
         )
+        sem_rotulo = estatisticas.rotulos_ausentes.get(codigo, {})
         mais_ausentes = sorted(ausentes.items(), key=lambda item: -item[1])[:10]
-        linhas += [f"  {contagem:>5}x  {coluna}" for coluna, contagem in mais_ausentes]
+        for coluna, contagem in mais_ausentes:
+            faltou = sem_rotulo.get(coluna, 0)
+            # Sem rótulo = o modelo daquela ficha é outro (ou o rótulo foi
+            # apagado). Com rótulo = a ficha está em branco naquele campo.
+            detalhe = (
+                f"{contagem - faltou} em branco, {faltou} sem o rótulo"
+                if faltou
+                else "todas em branco"
+            )
+            linhas.append(f"  {contagem:>5}x  {coluna:<42} ({detalhe})")
 
     linhas.append(regua)
     return "\n".join(linhas)

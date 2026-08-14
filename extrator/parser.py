@@ -108,6 +108,10 @@ class Resultado:
 
     valores: dict[str, str] = field(default_factory=dict)
     nao_encontrados: list[str] = field(default_factory=list)
+    #: Subconjunto de ``nao_encontrados`` cujo **rótulo** sequer existe no
+    #: documento. Os demais têm o rótulo, mas a ficha ficou sem resposta —
+    #: distinção que separa "o modelo da ficha é outro" de "não preencheram".
+    rotulos_ausentes: list[str] = field(default_factory=list)
 
 
 class Extrator:
@@ -129,19 +133,22 @@ class Extrator:
         for campo in self.modelo.campos:
             try:
                 if campo.extrator:
-                    metodo = getattr(self, f"_extrair_{campo.extrator}")
-                    valor, encontrado = metodo(campo)
+                    # Extrator de tabela: não achar a tabela é não achar o rótulo.
+                    valor, encontrado = getattr(self, f"_extrair_{campo.extrator}")(campo)
+                    tinha_rotulo = encontrado
                 else:
-                    valor, encontrado = self._extrair_por_rotulo(campo)
+                    valor, encontrado, tinha_rotulo = self._extrair_por_rotulo(campo)
             except Exception:  # pragma: no cover - blindagem por campo
                 logger.exception(
                     "Falha ao extrair '%s' de %s", campo.coluna, documento.caminho
                 )
-                valor, encontrado = "", False
+                valor, encontrado, tinha_rotulo = "", False, False
 
             resultado.valores[campo.coluna] = limpar(valor)
             if not encontrado:
                 resultado.nao_encontrados.append(campo.coluna)
+                if not tinha_rotulo:
+                    resultado.rotulos_ausentes.append(campo.coluna)
 
         return resultado
 
@@ -201,7 +208,7 @@ class Extrator:
             return PRIMEIRA_LINHA
         return None
 
-    def _extrair_por_rotulo(self, campo: Campo) -> tuple[str, bool]:
+    def _extrair_por_rotulo(self, campo: Campo) -> tuple[str, bool, bool]:
         """Usa o primeiro rótulo que realmente **produz** um valor.
 
         O mesmo rótulo costuma aparecer mais de uma vez na ficha: no quadro de
@@ -214,17 +221,21 @@ class Extrator:
         Campo cujo rótulo existe mas está **sem resposta** é reportado como não
         encontrado, para aparecer em ``Campos_Nao_Encontrados`` em vez de sair
         calado como uma célula em branco.
+
+        Devolve ``(valor, encontrado, tinha_rotulo)``. O terceiro item separa
+        "esta ficha não tem esse rótulo" de "tem o rótulo e ninguém preencheu",
+        que é o que distingue modelo de ficha diferente de ficha incompleta.
         """
         candidatos = self._candidatos(campo)
         if not candidatos:
-            return "", False
+            return "", False, False
 
         inicio = min(campo.ocorrencia, len(candidatos) - 1)
         for no in candidatos[inicio:]:
             valor = self._valor_do_rotulo(no, campo)
             if valor:
-                return valor, True
-        return "", False
+                return valor, True, True
+        return "", False, True
 
     def _valor_do_rotulo(self, no: No, campo: Campo) -> str:
         """Valor associado a uma ocorrência do rótulo (pode não haver)."""
@@ -325,7 +336,7 @@ class Extrator:
 
     def _valor_por_padrao(self, padrao: str, secao: str | None) -> str:
         """Atalho para extrair um rótulo avulso (usado pelos extratores)."""
-        valor, _ = self._extrair_por_rotulo(
+        valor, _, _ = self._extrair_por_rotulo(
             Campo(coluna="", padroes=(padrao,), secao=secao)
         )
         return valor

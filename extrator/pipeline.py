@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 EXTENSOES = (".docx",)
 #: Arquivos temporários do Word ("~$relatorio.docx") nunca são documentos reais.
 PREFIXO_TEMPORARIO = "~$"
+#: Chave auxiliar do registro, fora das colunas do modelo (não vai à planilha).
+CHAVE_ROTULOS_AUSENTES = "_Rotulos_Ausentes"
 
 
 @dataclass
@@ -44,8 +46,13 @@ class Estatisticas:
     com_itens_sem_descricao: dict[str, int] = field(default_factory=dict)
     #: arquivos ignorados (tipo não reconhecido) ou com erro de leitura.
     ignorados: list[Ocorrencia] = field(default_factory=list)
-    #: código do modelo -> coluna -> nº de arquivos em que o rótulo faltou.
+    #: código do modelo -> coluna -> nº de arquivos em que o campo ficou sem
+    #: valor (rótulo ausente ou presente sem resposta).
     campos_ausentes: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: código do modelo -> coluna -> nº de arquivos em que o **rótulo** sequer
+    #: existe. O restante de ``campos_ausentes`` é ficha sem preencher: a
+    #: distinção separa "o modelo desta ficha é outro" de "não preencheram".
+    rotulos_ausentes: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @property
     def total_ignorados(self) -> int:
@@ -104,6 +111,9 @@ def processar_arquivo(
         **resultado.valores,
     }
     observacoes: list[str] = []
+    # Chave auxiliar: não é coluna do modelo, então não entra na planilha —
+    # serve para o lote contabilizar rótulo ausente à parte de ficha vazia.
+    registro[CHAVE_ROTULOS_AUSENTES] = "; ".join(resultado.rotulos_ausentes)
     if resultado.nao_encontrados:
         registro["Status"] = "OK_COM_PENDENCIAS"
         registro["Campos_Nao_Encontrados"] = "; ".join(resultado.nao_encontrados)
@@ -320,6 +330,9 @@ def processar_lote(
             ausentes = estatisticas.campos_ausentes.setdefault(modelo.codigo, {})
             for coluna in filter(None, registro["Campos_Nao_Encontrados"].split("; ")):
                 ausentes[coluna] = ausentes.get(coluna, 0) + 1
+            sem_rotulo = estatisticas.rotulos_ausentes.setdefault(modelo.codigo, {})
+            for coluna in filter(None, registro[CHAVE_ROTULOS_AUSENTES].split("; ")):
+                sem_rotulo[coluna] = sem_rotulo.get(coluna, 0) + 1
 
         if barra_de_progresso is not None:
             barra_de_progresso.update(1)

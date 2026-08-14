@@ -1551,3 +1551,40 @@ def test_simbolo_e_resposta_legitima_em_campo_de_valor_unico(tmp_path: Path):
     assert valores["Periodicidade_Apuracao"] == "Quadrimestral"
     assert valores["Polaridade"] == "Positiva"
     assert valores["Classificacao"] == "Produto"
+
+
+def test_relatorio_separa_rotulo_ausente_de_ficha_em_branco(tmp_path: Path):
+    """Distingue "o modelo desta ficha é outro" de "não preencheram"."""
+    from extrator.relatorio import montar_relatorio
+
+    pasta = tmp_path / "diagnostico"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Compromisso", "Compromisso qualquer"),
+            # Rótulo presente, resposta em branco.
+            ("Problema(s) vinculado(s) ao Compromisso", ""),
+        ],
+    )
+    # "Ação(ões) Crítica(s)" nem aparece: rótulo ausente.
+    documento.save(pasta / "ficha.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    assert estatisticas.campos_ausentes["INICIATIVA"]["Problemas_Vinculados"] == 1
+    assert "Problemas_Vinculados" not in estatisticas.rotulos_ausentes["INICIATIVA"]
+    assert estatisticas.rotulos_ausentes["INICIATIVA"]["Acoes_Criticas"] == 1
+
+    texto = montar_relatorio(estatisticas, {}, 1.0)
+    assert "Problemas_Vinculados" in texto
+    assert "todas em branco" in texto
+    assert "1 sem o rótulo" in texto
+
+    # A chave auxiliar não vira coluna da planilha.
+    from extrator.modelos import MODELOS_POR_CODIGO
+    from extrator.planilha import montar_dataframe
+
+    quadro = montar_dataframe(registros["INICIATIVA"], MODELOS_POR_CODIGO["INICIATIVA"])
+    assert not [c for c in quadro.columns if c.startswith("_")]
