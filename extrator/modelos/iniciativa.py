@@ -29,6 +29,7 @@ CAMPOS: tuple[Campo, ...] = (
         padroes=(r"problemas?vinculados?aocompromisso", r"problemas?vinculados?"),
         secao="VINCULO",
         multiplo=True,
+        descritivo=True,
         descricao="Problema(s) vinculado(s) ao Compromisso.",
     ),
     Campo(
@@ -36,6 +37,7 @@ CAMPOS: tuple[Campo, ...] = (
         padroes=(r"causas?criticas?",),
         secao="VINCULO",
         multiplo=True,
+        descritivo=True,
         descricao="Causa(s) crítica(s), unidas na mesma célula.",
     ),
     Campo(
@@ -45,6 +47,7 @@ CAMPOS: tuple[Campo, ...] = (
         padroes=(r"ac(aooes|oes|ao)s?criticas?",),
         secao="VINCULO",
         multiplo=True,
+        descritivo=True,
         descricao="Ação(ões) crítica(s), unidas na mesma célula.",
     ),
     Campo(
@@ -69,6 +72,7 @@ CAMPOS: tuple[Campo, ...] = (
         padroes=(r"entregas?vinculadas?",),
         secao="ATRIBUTOS",
         multiplo=True,
+        descritivo=True,
         descricao="Entrega(s) vinculada(s) à iniciativa.",
     ),
     Campo(

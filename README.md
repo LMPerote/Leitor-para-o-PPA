@@ -186,6 +186,27 @@ coluna `Nome_Arquivo` repetida deixa a duplicação visível. Atenção ao conta
 para saber quantas **fichas** existem, conte os valores distintos de
 `Nome_Arquivo`, não o número de linhas.
 
+### O que o aplicativo não aceita como valor
+
+Conferindo o acervo real, três tipos de sujeira apareciam nessas colunas. Todos
+são descartados, e a coluna correspondente é apontada em
+`Campos_Nao_Encontrados` quando fica sem nada:
+
+* **caractere solto** — caixas de seleção desenhadas em fonte de símbolos
+  deixam uma letra qualquer no texto (o famoso `e`), e há células só com `.`;
+* **remissão a outros itens** — anotações de quem preencheu a ficha no meio da
+  lista (`AC 4,5,7,810,12,13,14`, `C5P1,3CC12,13,16AC3`, `P1`). Sem nenhuma
+  palavra, não descrevem problema, causa, ação nem entrega. Vale só para essas
+  quatro colunas: siglas e códigos (`SSP`, `20803`, `%`) continuam valendo nas
+  suas;
+* **bloco de baixo** — quando o rótulo do campo seguinte foi apagado da ficha,
+  restando a célula em branco, a lista parava só no bloco seguinte e o engolia
+  (as causas críticas iam parar na coluna de problemas). A célula vazia agora
+  encerra a lista.
+
+Ficha com o campo realmente em branco no Word continua saindo em branco — é o
+documento que está incompleto, e é para isso que serve o `OK_COM_PENDENCIAS`.
+
 ### `Indicadores.xlsx`
 
 `Nome_Arquivo`, `Caminho_Relativo`, `Eixo`, `Programa`, `Compromisso`,

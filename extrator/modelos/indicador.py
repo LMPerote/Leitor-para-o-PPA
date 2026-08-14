@@ -29,6 +29,7 @@ CAMPOS: tuple[Campo, ...] = (
         padroes=(r"problemas?vinculados?aocompromisso", r"problemas?vinculados?"),
         secao="VINCULO",
         multiplo=True,
+        descritivo=True,
         descricao="Problema(s) vinculado(s) ao Compromisso.",
     ),
     Campo(
@@ -36,6 +37,7 @@ CAMPOS: tuple[Campo, ...] = (
         padroes=(r"causas?criticas?",),
         secao="VINCULO",
         multiplo=True,
+        descritivo=True,
         descricao="Causa(s) crítica(s), unidas na mesma célula.",
     ),
     # --- 2. ATRIBUTOS DO INDICADOR ----------------------------------------

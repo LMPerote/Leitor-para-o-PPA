@@ -56,6 +56,29 @@ def eh_rotulo(texto: str) -> bool:
     return casa(_REGEX_ROTULOS, texto)
 
 
+#: Uma "palavra de conteúdo": três letras seguidas. Códigos de remissão
+#: ("AC 4,5,7", "C5P1,3CC12", "P1") nunca chegam a ter uma.
+_REGEX_PALAVRA = re.compile(r"[^\W\d_]{3,}")
+
+
+def eh_referencia(texto: str) -> bool:
+    """True se a linha é só uma remissão a outros itens, e não o item.
+
+    No meio das listas das fichas aparecem anotações de trabalho de quem
+    preencheu — "AC 4,5,7,810,12,13,14", "C5P1,3CC12,13,16AC3", "P1" — que
+    apontam para outros itens em vez de descrever um. Sem palavra alguma, não
+    são conteúdo.
+    """
+    valor = limpar(texto)
+    return bool(valor) and not _REGEX_PALAVRA.search(valor)
+
+
+def sem_referencias(texto: str) -> str:
+    """Devolve o texto sem as linhas de remissão (ver :func:`eh_referencia`)."""
+    linhas = [linha for linha in texto.split("\n") if not eh_referencia(linha)]
+    return "\n".join(linhas).strip()
+
+
 def tem_conteudo(texto: str, minimo: int = 1) -> bool:
     """True se o texto é resposta de verdade, e não sujeira de formulário.
 
@@ -255,14 +278,21 @@ class Extrator:
                     return texto
             return ""
 
-        # Campo múltiplo: consome a coluna até o próximo rótulo conhecido.
+        # Campo múltiplo: consome a coluna até o próximo rótulo conhecido ou
+        # até a primeira célula vazia depois do valor. A célula vazia importa:
+        # há fichas em que o rótulo do campo seguinte foi apagado, restando a
+        # célula em branco, e sem essa parada a lista engolia o bloco de baixo
+        # (as causas críticas iam parar na coluna de problemas).
         itens: list[str] = []
         for texto in abaixo:
             if eh_rotulo(texto):
                 break
-            if self._util(texto, campo):
-                itens.append(texto)
-        return self._unir_itens(itens)
+            if not self._util(texto, campo):
+                if itens:
+                    break
+                continue  # antes do valor, célula vazia é só espaçamento
+            itens.append(texto)
+        return self._unir_itens(itens, campo)
 
     def _valor_apos_paragrafo(self, no: No, campo: Campo) -> str:
         """Fallback para fichas escritas em parágrafos, sem tabelas."""
@@ -276,18 +306,23 @@ class Extrator:
                 itens.append(seguinte.texto)
                 if not campo.multiplo:
                     break
-        return self._unir_itens(itens)
+        return self._unir_itens(itens, campo)
 
-    def _unir_itens(self, itens: list[str]) -> str:
+    def _unir_itens(self, itens: list[str], campo: Campo | None = None) -> str:
         """Une itens de uma lista usando o separador configurado.
 
         Com um separador diferente de ``\\n``, as quebras de linha internas de
         uma célula também são convertidas: na ficha, várias causas/ações
         críticas costumam vir em uma única célula separadas por quebra manual,
         e quem escolhe ``--separador ponto-virgula`` espera "a; b; c".
+
+        Em campo descritivo, as linhas de remissão são descartadas (ver
+        :func:`eh_referencia`).
         """
         if self.separador != "\n":
             itens = [linha for item in itens for linha in item.split("\n")]
+        if campo is not None and campo.descritivo:
+            itens = [texto for texto in map(sem_referencias, itens) if texto]
         return juntar(itens, self.separador)
 
     def _valor_por_padrao(self, padrao: str, secao: str | None) -> str:

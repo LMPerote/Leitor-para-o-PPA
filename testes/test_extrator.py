@@ -1282,3 +1282,109 @@ def test_valor_curto_legitimo_continua_valendo(tmp_path: Path):
     valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
     assert valores["Valor_Meta"] == "5"
     assert valores["Responsavel_Sigla_Orgao"] == "SSP"
+
+
+# ---------------------------------------------------------------------------
+# Layouts conferidos contra as fichas reais do acervo
+# ---------------------------------------------------------------------------
+def _ficha_com_rotulo_apagado(destino: Path) -> Path:
+    """Ficha real em que o rótulo "Causa(s) Crítica(s)" foi apagado.
+
+    Sobrou a célula em branco no lugar do rótulo, com as causas logo abaixo.
+    Reproduz E12-SP-PSegPubDefesaSocial- C4 (CorregedoriaCBM).
+    """
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Compromisso",
+            "Fortalecer as ações das corregedorias",
+            "Problema(s) vinculado(s) ao Compromisso",
+            "A corrupção de agentes públicos.",
+            "",  # aqui estava o rótulo "Causa(s) Crítica(s)"
+            "C4P1CC1: Baixa divulgação dos canais de denúncia.\nC4P1CC2: Ausência de sistema.",
+            "Ação(ões) Crítica(s)",
+            "AC1: Levantar os requisitos comuns.",
+        ],
+    )
+    documento.save(destino)
+    return destino
+
+
+def test_celula_vazia_encerra_a_lista(tmp_path: Path):
+    """Sem o rótulo seguinte, a lista parava só no bloco de baixo e o engolia."""
+    caminho = _ficha_com_rotulo_apagado(tmp_path / "rotulo_apagado.docx")
+    resultado = Extrator(INICIATIVA).extrair(ler_documento(str(caminho)))
+
+    assert resultado.valores["Problemas_Vinculados"] == "A corrupção de agentes públicos."
+    assert resultado.valores["Acoes_Criticas"] == "AC1: Levantar os requisitos comuns."
+    # A causa não tem rótulo no documento: fica vazia e é apontada, não some
+    # dentro da coluna de problemas.
+    assert resultado.valores["Causas_Criticas"] == ""
+    assert "Causas_Criticas" in resultado.nao_encontrados
+
+
+def test_remissao_no_meio_da_lista_nao_vira_item(tmp_path: Path):
+    """Anotação de trabalho ("AC 4,5,7,8") no fim da lista de problemas.
+
+    Reproduz E6-DU-PMelhoriaCond-C2, em que a linha virava três linhas da
+    planilha com um código no lugar do problema.
+    """
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1-Inadequadas condições de acessibilidade\n"
+            "P2-Dificuldades nas condições de mobilidade\n"
+            "AC 4,5,7,810,12,13,14",
+        ],
+    )
+    caminho = tmp_path / "remissao.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INICIATIVA).extrair(ler_documento(str(caminho))).valores
+    assert valores["Problemas_Vinculados"] == (
+        "P1-Inadequadas condições de acessibilidade\n"
+        "P2-Dificuldades nas condições de mobilidade"
+    )
+
+
+def test_lista_so_com_remissao_fica_vazia_e_e_apontada(tmp_path: Path):
+    """Célula que só tem "P1" não descreve problema nenhum."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento, ["Problema(s) vinculado(s) ao Compromisso", "P1", "Ação(ões) Crítica(s)"]
+    )
+    caminho = tmp_path / "so_remissao.docx"
+    documento.save(caminho)
+
+    resultado = Extrator(INICIATIVA).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Problemas_Vinculados"] == ""
+    assert "Problemas_Vinculados" in resultado.nao_encontrados
+
+
+def test_remissao_nao_mexe_em_campo_de_codigo(tmp_path: Path):
+    """A regra vale só nos campos descritivos: siglas e códigos continuam."""
+    from extrator.parser import eh_referencia
+
+    assert eh_referencia("AC 4,5,7,810,12,13,14")
+    assert eh_referencia("C5P1,3CC12,13,16AC3")
+    assert eh_referencia("P1")
+    # Texto de verdade, por mais curto que seja, não é remissão.
+    assert not eh_referencia("Sedentarismo")
+    assert not eh_referencia("Não identificado")
+    assert not eh_referencia("AC4-Investir em ações de mobilidade")
+
+    documento = docx.Document()
+    _tabela_vertical(documento, ["ATRIBUTOS DA INICIATIVA"])
+    _tabela_grade(documento, [["Sigla do Órgão", "UO"], ["SSP", "20803"]])
+    caminho = tmp_path / "codigos.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INICIATIVA).extrair(ler_documento(str(caminho))).valores
+    assert valores["Responsavel_Sigla_Orgao"] == "SSP"
+    assert valores["Responsavel_UO"] == "20803"
