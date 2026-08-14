@@ -59,6 +59,21 @@ def eh_rotulo(texto: str) -> bool:
     return casa(_REGEX_ROTULOS, texto)
 
 
+def anuncia_rotulo(texto: str) -> bool:
+    """True se o texto **anuncia** um rótulo conhecido, e não só o é.
+
+    Diferente de :func:`eh_rotulo`, reconhece as três formas do documento:
+    a célula com apenas o rótulo, o "Rótulo: valor" na mesma linha e o rótulo
+    na primeira linha com o valor abaixo.
+    """
+    if eh_rotulo(texto):
+        return True
+    partes = _DIVISOR_INLINE.match(texto)
+    if partes and eh_rotulo(partes.group(1)):
+        return True
+    return "\n" in texto and eh_rotulo(texto.split("\n", 1)[0])
+
+
 def tem_conteudo(texto: str, minimo: int = 1) -> bool:
     """True se o texto é resposta de verdade, e não sujeira de formulário.
 
@@ -136,9 +151,13 @@ class Extrator:
         for campo in self.modelo.campos:
             try:
                 if campo.extrator:
-                    # Extrator de tabela: não achar a tabela é não achar o rótulo.
-                    valor, encontrado = getattr(self, f"_extrair_{campo.extrator}")(campo)
-                    tinha_rotulo = encontrado
+                    devolvido = getattr(self, f"_extrair_{campo.extrator}")(campo)
+                    if len(devolvido) == 3:
+                        valor, encontrado, tinha_rotulo = devolvido
+                    else:
+                        # Extrator de tabela: não achar a tabela é não achar o rótulo.
+                        valor, encontrado = devolvido
+                        tinha_rotulo = encontrado
                 else:
                     valor, encontrado, tinha_rotulo = self._extrair_por_rotulo(campo)
             except Exception:  # pragma: no cover - blindagem por campo
@@ -286,7 +305,13 @@ class Extrator:
         abaixo = tabela.celulas_abaixo(no.linha, no.coluna)
         if not campo.multiplo:
             for texto in abaixo:
-                if self._util(texto, campo) and not eh_rotulo(texto):
+                # Parar em qualquer célula que *anuncie* outro rótulo, e não só
+                # nas que são o rótulo puro: no layout de uma coluna só, o campo
+                # seguinte vem como "RÓTULO: valor" na mesma célula, e descer
+                # por cima dele trazia a resposta do campo errado.
+                if anuncia_rotulo(texto):
+                    return ""
+                if self._util(texto, campo):
                     return texto
             return ""
 
@@ -405,6 +430,34 @@ class Extrator:
         tabela, linha_cabecalho = localizacao
         registros = self._consolidar_linhas(self._linhas_da_tabela(tabela, linha_cabecalho))
         return juntar(registros, self.separador), True
+
+    def _extrair_compromisso_do_controle(self, campo: Campo) -> tuple[str, bool, bool]:
+        """Compromisso da ficha de controle, com apoio na posição.
+
+        Em parte das fichas o rótulo "COMPROMISSO" foi apagado e o texto do
+        compromisso escrito por cima da célula. O bloco tem ordem fixa —
+        diretório, eixo, programa, compromisso —, então, quando o rótulo não
+        existe, o compromisso é a primeira célula preenchida abaixo da do
+        "Programa" que não anuncie outro rótulo.
+        """
+        valor, encontrado, tinha_rotulo = self._extrair_por_rotulo(campo)
+        if encontrado or tinha_rotulo:
+            # Rótulo presente: sem resposta é ficha em branco, não posição.
+            return valor, encontrado, tinha_rotulo
+
+        programa = Campo(coluna="", padroes=(r"programa",), secao=campo.secao)
+        for no in self._candidatos(programa):
+            if no.tipo != "celula":
+                continue
+            tabela = self.documento.tabelas[no.tabela]
+            for texto in tabela.celulas_abaixo(no.linha, no.coluna):
+                if not limpar(texto):
+                    continue
+                if anuncia_rotulo(texto):
+                    break  # chegou ao campo seguinte sem passar pelo compromisso
+                return texto, True, True
+            break
+        return "", False, False
 
     def _extrair_recursos_orcamentarios(self, campo: Campo) -> tuple[str, bool]:
         """Fontes de recurso mais a linha de "Total dos Recursos" que as fecha."""

@@ -32,7 +32,11 @@ CAMPOS: tuple[Campo, ...] = (
     Campo(
         coluna="Compromisso",
         padroes=(r"compromisso",),
-        descricao="Compromisso a que a pasta se refere.",
+        extrator="compromisso_do_controle",
+        descricao=(
+            "Compromisso a que a pasta se refere. Quando o rótulo foi apagado "
+            "da ficha, é lido pela posição (logo abaixo do Programa)."
+        ),
     ),
     Campo(
         coluna="Nome_Digitador_Fiplan",

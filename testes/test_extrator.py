@@ -1654,3 +1654,72 @@ def test_modelo_padrao_nao_ganha_a_pergunta_unica(pasta: Path):
     ).valores
     assert valores["Desagregacao_Territorial"].startswith("Estado: Sim")
     assert "Desagregação territorial/regional" not in valores["Desagregacao_Territorial"]
+
+
+def _controle(tmp_path: Path, nome: str, linhas: list[str]) -> Path:
+    documento = docx.Document()
+    tabela = documento.add_table(rows=len(linhas), cols=1)
+    for indice, texto in enumerate(linhas):
+        tabela.cell(indice, 0).text = texto
+    caminho = tmp_path / nome
+    documento.save(caminho)
+    return caminho
+
+
+def test_compromisso_do_controle_com_rotulo_apagado(tmp_path: Path):
+    """Quem preencheu escreveu o compromisso por cima do rótulo "COMPROMISSO".
+
+    Reproduz `Ficha C2.docx`, `Ficha DR C1.docx` e mais duas: a célula existe
+    e tem o texto, mas não há rótulo para ancorar. A ficha de controle tem
+    ordem fixa, então o compromisso é lido pela posição.
+    """
+    caminho = _controle(
+        tmp_path,
+        "controle_sem_rotulo.docx",
+        [
+            "NOME DO DIRETÓRIO DO COMPROMISSO: \nE12-SP-PSegPubDefesaSocial- C2",
+            "EIXO: \nSP- Segurança Pública",
+            "PROGRAMA: \nSEGURANÇA PÚBLICA E DEFESA SOCIAL",
+            "Aprimorar o enfrentamento à criminalidade violenta",  # rótulo apagado
+            "NOME DIGITADOR(A) FIPLAN: \nFernanda",
+            "N° de Fichas de INDICADORES: \n2",
+        ],
+    )
+    resultado = Extrator(CONTROLE).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Compromisso"] == (
+        "Aprimorar o enfrentamento à criminalidade violenta"
+    )
+    assert "Compromisso" not in resultado.nao_encontrados
+
+
+def test_compromisso_em_branco_nao_puxa_o_campo_de_baixo(tmp_path: Path):
+    """Com o rótulo presente e sem resposta, a posição não entra em ação."""
+    caminho = _controle(
+        tmp_path,
+        "controle_em_branco.docx",
+        [
+            "NOME DO DIRETÓRIO DO COMPROMISSO: \nE1-ASGD-C1",
+            "PROGRAMA: \nAssistência Social",
+            "COMPROMISSO",  # rótulo presente, resposta nenhuma
+            "NOME DIGITADOR(A) FIPLAN: \nFulana",
+        ],
+    )
+    resultado = Extrator(CONTROLE).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Compromisso"] == ""
+    assert "Compromisso" in resultado.nao_encontrados
+    # E não em rotulos_ausentes: o rótulo está lá, a ficha é que está vazia.
+    assert "Compromisso" not in resultado.rotulos_ausentes
+
+
+def test_controle_com_rotulo_normal_continua_igual(tmp_path: Path):
+    caminho = _controle(
+        tmp_path,
+        "controle_normal.docx",
+        [
+            "PROGRAMA: \nEnergia para o desenvolvimento",
+            "COMPROMISSO \nExpandir o acesso à energia elétrica",
+            "NOME DIGITADOR(A) FIPLAN: \nFernanda Tojo",
+        ],
+    )
+    valores = Extrator(CONTROLE).extrair(ler_documento(str(caminho))).valores
+    assert valores["Compromisso"] == "Expandir o acesso à energia elétrica"
