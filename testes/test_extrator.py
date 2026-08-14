@@ -1388,3 +1388,55 @@ def test_remissao_nao_mexe_em_campo_de_codigo(tmp_path: Path):
     valores = Extrator(INICIATIVA).extrair(ler_documento(str(caminho))).valores
     assert valores["Responsavel_Sigla_Orgao"] == "SSP"
     assert valores["Responsavel_UO"] == "20803"
+
+
+def test_ligacao_e_ponto_solto_separam_itens_em_vez_de_virar_item(tmp_path: Path):
+    """Lista escrita com "e" de ligação e um ponto de digitação no meio.
+
+    Nas fichas a lista às vezes vem "P1 ... / e / P2 ...", com o "e" sozinho na
+    linha, e às vezes sobra um "." solto de digitação. Os dois são separação
+    entre itens, não itens: não podem virar uma linha da planilha.
+    """
+    pasta = tmp_path / "ligacao"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1 Violência contra jovens negros\ne\nP2 Racismo institucional\n.\n"
+            "P3 Baixa escolaridade",
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, _ = processar_lote(listar_documentos(pasta), pasta)
+    assert [linha["Problemas_Vinculados"] for linha in registros["INICIATIVA"]] == [
+        "P1 Violência contra jovens negros",
+        "P2 Racismo institucional",
+        "P3 Baixa escolaridade",
+    ]
+
+
+def test_ponto_final_dentro_da_frase_nao_separa(tmp_path: Path):
+    """O ponto só é descartado quando está sozinho: frase não é picotada."""
+    pasta = tmp_path / "frase"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1 Baixa cobertura. A rede não alcança o interior. Faltam equipes.",
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, _ = processar_lote(listar_documentos(pasta), pasta)
+    linhas = registros["INICIATIVA"]
+    assert len(linhas) == 1
+    assert linhas[0]["Problemas_Vinculados"] == (
+        "P1 Baixa cobertura. A rede não alcança o interior. Faltam equipes."
+    )
