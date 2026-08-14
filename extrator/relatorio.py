@@ -30,14 +30,20 @@ def montar_relatorio(
         geradas = estatisticas.linhas.get(modelo.codigo, quantidade)
         linhas.append(f"{quantidade} arquivos de {modelo.rotulo} processados.")
         if geradas != quantidade:
-            # Acontece quando a ficha traz mais de um problema, causa crítica
-            # ou ação crítica: cada trinca vira uma linha.
+            # Acontece quando a ficha traz mais de um problema, causa crítica,
+            # ação crítica ou entrega: cada conjunto vira uma linha.
             linhas.append(
                 f"  - {geradas} linhas na planilha "
-                "(um problema + causa crítica + ação crítica por linha)."
+                "(um problema + causa crítica + ação crítica + entrega por linha)."
             )
         if pendentes:
-            linhas.append(f"  - {pendentes} com algum campo não localizado.")
+            linhas.append(f"  - {pendentes} com algum campo sem valor.")
+        sem_descricao = estatisticas.com_itens_sem_descricao.get(modelo.codigo, 0)
+        if sem_descricao:
+            linhas.append(
+                f"  - {sem_descricao} com item que remete a outro em vez de "
+                "descrever (ver Observacoes)."
+            )
         if modelo.codigo in destinos:
             linhas.append(f"  - planilha: {destinos[modelo.codigo]}")
 
@@ -56,7 +62,7 @@ def montar_relatorio(
         linhas.append("-" * LARGURA)
         linhas.append(
             f"Campos mais ausentes em {MODELOS_POR_CODIGO[codigo].rotulo} "
-            "(rótulo não localizado no documento):"
+            "(rótulo não localizado ou sem resposta preenchida):"
         )
         mais_ausentes = sorted(ausentes.items(), key=lambda item: -item[1])[:10]
         linhas += [f"  {contagem:>5}x  {coluna}" for coluna, contagem in mais_ausentes]

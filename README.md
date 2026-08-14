@@ -3,8 +3,8 @@
 Aplicação (com **janela gráfica** e também linha de comando) que varre uma pasta com **centenas/milhares** de
 fichas de planejamento governamental em Word (`.docx`), **identifica
 automaticamente o tipo de cada documento** e consolida tudo em **três planilhas
-Excel**, com **uma linha por problema, causa crítica e ação crítica que se
-correspondem** dentro da mesma ficha:
+Excel**, com **uma linha por problema, causa crítica, ação crítica e entrega
+que se correspondem** dentro da mesma ficha:
 
 | Tipo do documento | Reconhecido por | Planilha gerada |
 |---|---|---|
@@ -12,10 +12,11 @@ correspondem** dentro da mesma ficha:
 | Iniciativa | seção `VÍNCULO DA INICIATIVA` | `Iniciativas.xlsx` |
 | Ficha de Controle | `NOME DO DIRETÓRIO DO COMPROMISSO` | `Controles.xlsx` |
 
-Os dois tipos podem estar misturados na mesma pasta. Campos com vários itens
-(ex.: *Causa(s) Crítica(s)*, *Ação(ões) Crítica(s)*, propostas de escuta social,
-ações orçamentárias) são unidos em um único texto, ficando confinados na célula
-da respectiva coluna.
+Os dois tipos podem estar misturados na mesma pasta. *Problema(s)*,
+*Causa(s) Crítica(s)*, *Ação(ões) Crítica(s)* e *Entrega(s) Vinculada(s)* são
+divididos **um por linha** da planilha. Os demais campos com vários itens
+(propostas de escuta social, ações orçamentárias, recursos) continuam unidos em
+um único texto, confinados na célula da respectiva coluna.
 
 ---
 
@@ -154,23 +155,28 @@ apareça na pasta. Formatação aplicada: cabeçalho em **negrito** com fundo az
 escuro e texto branco, linha de cabeçalho congelada, filtro automático, largura de colunas
 ajustada e células com **quebra automática de texto** e alinhamento superior.
 
-### Uma linha por problema, causa crítica e ação crítica
+### Uma linha por problema, causa crítica, ação crítica e entrega
 
-A granularidade da planilha é a **trinca** problema + causa crítica + ação
-crítica: cada linha traz um de cada, pareados pela ordem em que aparecem na
-ficha. Uma ficha com 6 causas críticas gera 6 linhas, repetindo todas as demais
-colunas — inclusive o problema, quantas vezes for preciso. Nada é agrupado nem
-deduplicado.
+A granularidade da planilha é o **conjunto** problema + causa crítica + ação
+crítica + entrega vinculada: cada linha traz **um item de cada**, pareados pela
+ordem em que aparecem na ficha. Uma ficha com 6 causas críticas gera 6 linhas,
+repetindo todas as demais colunas — inclusive o problema, quantas vezes for
+preciso. Nada é agrupado nem deduplicado: item repetido ocupa a sua própria
+linha.
 
 Quando uma das listas é menor que as outras, seu último item se repete nas
-linhas restantes. Uma ficha com 4 problemas, 1 causa e 3 ações gera:
+linhas restantes. Uma ficha com 4 problemas, 1 causa, 3 ações e 2 entregas gera:
 
-| linha | problema | causa crítica | ação crítica |
-|---|---|---|---|
-| 1 | P1 | C1 | A1 |
-| 2 | P2 | C1 | A2 |
-| 3 | P3 | C1 | A3 |
-| 4 | P4 | C1 | A3 |
+| linha | problema | causa crítica | ação crítica | entrega |
+|---|---|---|---|---|
+| 1 | P1 | C1 | A1 | E1 |
+| 2 | P2 | C1 | A2 | E2 |
+| 3 | P3 | C1 | A3 | E2 |
+| 4 | P4 | C1 | A3 | E2 |
+
+Os itens são reconhecidos tanto quando vêm **um por linha** na célula do Word
+quanto quando vêm **digitados seguidos**, separados por ponto e vírgula
+(`P1 ...; P2 ...;`) — nos dois casos cada um ganha a sua linha na planilha.
 
 Ficha com um único item de cada — ou sem nenhum — continua gerando uma linha
 só, e nenhum arquivo deixa de aparecer na planilha.
@@ -179,6 +185,42 @@ O relatório final avisa quando isso acontece (`N linhas na planilha`), e a
 coluna `Nome_Arquivo` repetida deixa a duplicação visível. Atenção ao contar:
 para saber quantas **fichas** existem, conte os valores distintos de
 `Nome_Arquivo`, não o número de linhas.
+
+### O que separa um item do outro
+
+Além da quebra de linha e do ponto e vírgula, duas coisas aparecem entre os
+itens nas fichas reais e **não** são itens:
+
+* a **letra solta** — o `e` de ligação escrito sozinho na linha antes do último
+  item, e também o caractere que as caixas de seleção em fonte de símbolos
+  deixam no texto;
+* o **ponto solto** — um `.` sozinho, quase sempre erro de digitação.
+
+Os dois são descartados. O corte é só esse: qualquer linha com conteúdo vai
+para a planilha **como está na ficha**, inclusive as anotações de trabalho de
+quem preencheu (`AC 4,5,7,810,12,13,14`, `P1`) — limpar esse tipo de texto é
+tarefa do documento, não do aplicativo. Ponto no meio de uma frase também não
+separa nada: a frase continua inteira.
+
+Essas anotações **não somem, mas são avisadas**. Quando um item não tem nenhuma
+palavra — ou seja, remete a outro item em vez de descrever um —, a coluna
+`Observacoes` recebe o aviso e o relatório final conta as fichas:
+
+```
+Problemas_Vinculados: 1 item sem descrição ("AC 4,5,7,810,12,13,14") — conferir a ficha.
+```
+
+Para achar essas fichas na planilha, filtre `Observacoes` por *contém*
+`sem descrição`. Nenhum dado é alterado: o aviso é só um apontamento.
+
+Uma coisa mais o aplicativo faz sozinho: quando o rótulo do campo seguinte foi
+**apagado da ficha**, restando a célula em branco, a lista parava só no bloco
+de baixo e o engolia (as causas críticas iam parar na coluna de problemas). A
+célula vazia encerra a lista, e o campo sem rótulo é apontado em
+`Campos_Nao_Encontrados`.
+
+Ficha com o campo realmente em branco no Word continua saindo em branco — é o
+documento que está incompleto, e é para isso que serve o `OK_COM_PENDENCIAS`.
 
 ### `Indicadores.xlsx`
 
@@ -242,8 +284,10 @@ Total dos Recursos: R$ 2.400.000,00
 
 * `Nome_Arquivo` / `Caminho_Relativo` — rastreabilidade até o documento de origem.
 * `Status` — `OK` (todos os rótulos localizados) ou `OK_COM_PENDENCIAS`.
-* `Campos_Nao_Encontrados` — colunas cujo rótulo não existe naquele documento.
-* `Observacoes` — avisos do processamento.
+* `Campos_Nao_Encontrados` — colunas sem valor: o rótulo não existe naquele
+  documento ou existe sem resposta preenchida.
+* `Observacoes` — avisos do processamento: campos sem valor e itens que
+  remetem a outro item em vez de descrever um (o texto continua na planilha).
 
 Arquivos corrompidos ou de tipo não reconhecido **não entram nas planilhas**:
 são listados no relatório final e no log, e **nunca interrompem o lote**.

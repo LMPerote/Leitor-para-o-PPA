@@ -3,7 +3,7 @@
 
 A pasta de entrada pode misturar os dois tipos de ficha; o tipo de cada
 documento é identificado automaticamente e vai para a planilha do seu tipo,
-com UMA linha por problema vinculado (o normal é um problema por ficha):
+com UMA linha por problema, causa crítica, ação crítica e entrega vinculada:
 
 * "VÍNCULO DO INDICADOR DE COMPROMISSO" -> ``Indicadores.xlsx``
 * "VÍNCULO DA INICIATIVA"               -> ``Iniciativas.xlsx``

@@ -704,13 +704,15 @@ def test_ficha_com_dois_problemas_gera_duas_linhas(tmp_path: Path):
     assert estatisticas.linhas["INDICADOR"] == 2
 
 
-def test_iniciativa_gera_uma_linha_por_causa_e_acao(pasta: Path):
-    """A ficha de exemplo tem 1 problema, 2 causas e 2 ações -> 2 linhas."""
+def test_iniciativa_gera_uma_linha_por_causa_acao_e_entrega(pasta: Path):
+    """A ficha tem 1 problema, 2 causas, 2 ações e 2 entregas -> 2 linhas."""
     registros, _ = processar_lote(listar_documentos(pasta), pasta)
     linhas = registros["INICIATIVA"]
     assert len(linhas) == 2
     assert [linha["Causas_Criticas"] for linha in linhas] == ["Causa A.", "Causa B."]
     assert [linha["Acoes_Criticas"] for linha in linhas] == ["Ação 1.", "Ação 2."]
+    # A entrega também é dividida: uma por linha, e não empilhada na célula.
+    assert [linha["Entregas_Vinculadas"] for linha in linhas] == ["Entrega 1", "Entrega 2"]
     # O problema é um só: se repete nas duas linhas.
     assert {linha["Problemas_Vinculados"] for linha in linhas} == {"Problema da iniciativa"}
     # As demais colunas acompanham a ficha inteira.
@@ -719,24 +721,24 @@ def test_iniciativa_gera_uma_linha_por_causa_e_acao(pasta: Path):
 
 
 def test_expansao_respeita_o_separador_escolhido():
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": "A; B; C"}
-    linhas = expandir_por_problema(registro, "; ")
+    linhas = expandir_em_linhas(registro, "; ")
     assert [linha["Problemas_Vinculados"] for linha in linhas] == ["A", "B", "C"]
     assert all(linha["Nome_Arquivo"] == "f.docx" for linha in linhas)
 
 
 def test_ficha_sem_problema_nao_some_da_planilha():
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": ""}
-    assert expandir_por_problema(registro, "\n") == [registro]
+    assert expandir_em_linhas(registro, "\n") == [registro]
 
 
 def test_problema_causa_e_acao_sao_pareados_pela_ordem():
     """Cada linha traz a trinca que se corresponde dentro da mesma ficha."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
@@ -744,7 +746,7 @@ def test_problema_causa_e_acao_sao_pareados_pela_ordem():
         "Causas_Criticas": "C1\nC2\nC3",
         "Acoes_Criticas": "A1\nA2\nA3",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert [
         (l["Problemas_Vinculados"], l["Causas_Criticas"], l["Acoes_Criticas"]) for l in linhas
     ] == [("P1", "C1", "A1"), ("P2", "C2", "A2"), ("P3", "C3", "A3")]
@@ -752,7 +754,7 @@ def test_problema_causa_e_acao_sao_pareados_pela_ordem():
 
 def test_lista_menor_repete_o_ultimo_item():
     """4 problemas, 1 causa e 3 ações viram 4 linhas, como na planilha de vínculo."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
@@ -760,7 +762,7 @@ def test_lista_menor_repete_o_ultimo_item():
         "Causas_Criticas": "C1",
         "Acoes_Criticas": "A1\nA2\nA3",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert [
         (l["Problemas_Vinculados"], l["Causas_Criticas"], l["Acoes_Criticas"]) for l in linhas
     ] == [("P1", "C1", "A1"), ("P2", "C1", "A2"), ("P3", "C1", "A3"), ("P4", "C1", "A3")]
@@ -768,7 +770,7 @@ def test_lista_menor_repete_o_ultimo_item():
 
 def test_mais_causas_que_problemas_repete_o_problema():
     """Um problema que vale para várias causas aparece repetido, sem deduplicar."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
@@ -776,7 +778,7 @@ def test_mais_causas_que_problemas_repete_o_problema():
         "Causas_Criticas": "C1\nC2\nC3\nC4",
         "Acoes_Criticas": "A1\nA2\nA3\nA4",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert len(linhas) == 4
     assert all(linha["Problemas_Vinculados"] == "P1" for linha in linhas)
     assert [linha["Causas_Criticas"] for linha in linhas] == ["C1", "C2", "C3", "C4"]
@@ -784,16 +786,81 @@ def test_mais_causas_que_problemas_repete_o_problema():
 
 def test_expansao_nao_cria_coluna_que_o_modelo_nao_tem():
     """A ficha de Indicador não tem ações críticas; a coluna não é inventada."""
-    from extrator.pipeline import expandir_por_problema
+    from extrator.pipeline import expandir_em_linhas
 
     registro = {
         "Nome_Arquivo": "f.docx",
         "Problemas_Vinculados": "P1",
         "Causas_Criticas": "C1\nC2",
     }
-    linhas = expandir_por_problema(registro, "\n")
+    linhas = expandir_em_linhas(registro, "\n")
     assert len(linhas) == 2
     assert all("Acoes_Criticas" not in linha for linha in linhas)
+
+
+def test_entrega_tambem_vira_uma_linha_por_item():
+    """A entrega entra na mesma regra: 3 entregas geram 3 linhas."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {
+        "Nome_Arquivo": "f.docx",
+        "Problemas_Vinculados": "P1",
+        "Causas_Criticas": "C1",
+        "Acoes_Criticas": "A1",
+        "Entregas_Vinculadas": "E1\nE2\nE3",
+    }
+    linhas = expandir_em_linhas(registro, "\n")
+    assert [linha["Entregas_Vinculadas"] for linha in linhas] == ["E1", "E2", "E3"]
+    # O trio se repete nas três linhas, sem agrupar nem deduplicar.
+    assert all(
+        (l["Problemas_Vinculados"], l["Causas_Criticas"], l["Acoes_Criticas"])
+        == ("P1", "C1", "A1")
+        for l in linhas
+    )
+
+
+def test_itens_digitados_na_mesma_linha_sao_divididos():
+    """Lista escrita seguida ("P1 ...; P2 ...;") também vira uma linha por item."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {
+        "Nome_Arquivo": "f.docx",
+        "Problemas_Vinculados": "P1 Violência contra jovens; P2 Racismo institucional;",
+        "Entregas_Vinculadas": "Carnaval; Festas populares",
+    }
+    linhas = expandir_em_linhas(registro, "\n")
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == [
+        "P1 Violência contra jovens",
+        "P2 Racismo institucional",
+    ]
+    assert [linha["Entregas_Vinculadas"] for linha in linhas] == [
+        "Carnaval",
+        "Festas populares",
+    ]
+
+
+def test_item_repetido_ocupa_a_propria_linha():
+    """Repetição é preservada: cada ocorrência vale uma linha."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {
+        "Nome_Arquivo": "f.docx",
+        "Problemas_Vinculados": "P1\nP1\nP2",
+        "Causas_Criticas": "C1\nC1\nC1",
+    }
+    linhas = expandir_em_linhas(registro, "\n")
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == ["P1", "P1", "P2"]
+    assert [linha["Causas_Criticas"] for linha in linhas] == ["C1", "C1", "C1"]
+
+
+def test_divisao_normaliza_item_unico():
+    """Um item só continua gerando uma linha, sem o separador sobrando."""
+    from extrator.pipeline import expandir_em_linhas
+
+    registro = {"Nome_Arquivo": "f.docx", "Problemas_Vinculados": "P1;"}
+    linhas = expandir_em_linhas(registro, "\n")
+    assert len(linhas) == 1
+    assert linhas[0]["Problemas_Vinculados"] == "P1"
 
 
 # ---------------------------------------------------------------------------
@@ -1104,3 +1171,352 @@ def test_ficha_de_controle_contagem_sem_dois_pontos(tmp_path: Path):
     valores = Extrator(CONTROLE).extrair(ler_documento(str(caminho))).valores
     assert valores["Qtd_Indicadores_Compromisso"] == "2"
     assert valores["Qtd_Fichas_Iniciativas"] == "2"
+
+
+# ---------------------------------------------------------------------------
+# Erros de captura do rótulo "Problema(s) vinculado(s) ao Compromisso"
+#
+# Os três casos vieram da conferência do acervo real: colunas de problema em
+# branco (com Status OK, sem aviso nenhum) e colunas preenchidas com sujeira.
+# ---------------------------------------------------------------------------
+def _ficha_com_quadro_de_orientacoes(destino: Path) -> Path:
+    """Ficha em que o rótulo aparece duas vezes na mesma seção.
+
+    A primeira ocorrência é o quadro de orientações de preenchimento, sem
+    resposta ao lado; a ficha preenchida vem logo depois.
+    """
+    documento = docx.Document()
+
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Problema(s) vinculado(s) ao Compromisso", ""),
+            ("Causa(s) Crítica(s)", ""),
+        ],
+    )
+    _tabela_horizontal(
+        documento,
+        [
+            ("Eixo", "Segurança Pública"),
+            ("Compromisso", "Fortalecer a Polícia Comunitária"),
+            ("Problema(s) vinculado(s) ao Compromisso", "P1 Violência urbana"),
+            ("Causa(s) Crítica(s)", "CC1 Baixa cobertura"),
+        ],
+    )
+    documento.save(destino)
+    return destino
+
+
+def test_rotulo_do_quadro_de_orientacoes_nao_esvazia_a_coluna(tmp_path: Path):
+    """A busca segue até a ocorrência que tem resposta."""
+    caminho = _ficha_com_quadro_de_orientacoes(tmp_path / "orientacoes.docx")
+    resultado = Extrator(INDICADOR).extrair(ler_documento(str(caminho)))
+
+    assert resultado.valores["Problemas_Vinculados"] == "P1 Violência urbana"
+    assert resultado.valores["Causas_Criticas"] == "CC1 Baixa cobertura"
+    assert "Problemas_Vinculados" not in resultado.nao_encontrados
+
+
+def test_caixa_de_selecao_nao_vira_problema(tmp_path: Path):
+    """Célula com um caractere solto ("e" de fonte de símbolos) não é valor."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Compromisso", "Compromisso qualquer"),
+            ("Problema(s) vinculado(s) ao Compromisso", "e"),
+            ("Causa(s) Crítica(s)", "."),
+        ],
+    )
+    caminho = tmp_path / "sujeira.docx"
+    documento.save(caminho)
+
+    resultado = Extrator(INDICADOR).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Problemas_Vinculados"] == ""
+    assert resultado.valores["Causas_Criticas"] == ""
+    # E o arquivo é apontado no relatório, em vez de sair calado.
+    assert "Problemas_Vinculados" in resultado.nao_encontrados
+    assert "Causas_Criticas" in resultado.nao_encontrados
+
+
+def test_rotulo_sem_resposta_entra_em_campos_nao_encontrados(tmp_path: Path):
+    """Rótulo presente e célula vazia: a ficha precisa aparecer como pendência."""
+    pasta = tmp_path / "sem_resposta"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Compromisso", "Compromisso sem problema preenchido"),
+            ("Problema(s) vinculado(s) ao Compromisso", ""),
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    linha = registros["INDICADOR"][0]
+    assert linha["Problemas_Vinculados"] == ""
+    assert linha["Status"] == "OK_COM_PENDENCIAS"
+    assert "Problemas_Vinculados" in linha["Campos_Nao_Encontrados"]
+    assert estatisticas.campos_ausentes["INDICADOR"]["Problemas_Vinculados"] == 1
+
+
+def test_valor_curto_legitimo_continua_valendo(tmp_path: Path):
+    """A regra de sujeira não pode derrubar um valor curto de verdade."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["ATRIBUTOS DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Unidade de medida", "%"),
+            ("Valor da meta", "5"),
+            ("Sigla do Órgão", "SSP"),
+        ],
+    )
+    caminho = tmp_path / "curtos.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+    assert valores["Valor_Meta"] == "5"
+    assert valores["Responsavel_Sigla_Orgao"] == "SSP"
+
+
+# ---------------------------------------------------------------------------
+# Layouts conferidos contra as fichas reais do acervo
+# ---------------------------------------------------------------------------
+def _ficha_com_rotulo_apagado(destino: Path) -> Path:
+    """Ficha real em que o rótulo "Causa(s) Crítica(s)" foi apagado.
+
+    Sobrou a célula em branco no lugar do rótulo, com as causas logo abaixo.
+    Reproduz E12-SP-PSegPubDefesaSocial- C4 (CorregedoriaCBM).
+    """
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Compromisso",
+            "Fortalecer as ações das corregedorias",
+            "Problema(s) vinculado(s) ao Compromisso",
+            "A corrupção de agentes públicos.",
+            "",  # aqui estava o rótulo "Causa(s) Crítica(s)"
+            "C4P1CC1: Baixa divulgação dos canais de denúncia.\nC4P1CC2: Ausência de sistema.",
+            "Ação(ões) Crítica(s)",
+            "AC1: Levantar os requisitos comuns.",
+        ],
+    )
+    documento.save(destino)
+    return destino
+
+
+def test_celula_vazia_encerra_a_lista(tmp_path: Path):
+    """Sem o rótulo seguinte, a lista parava só no bloco de baixo e o engolia."""
+    caminho = _ficha_com_rotulo_apagado(tmp_path / "rotulo_apagado.docx")
+    resultado = Extrator(INICIATIVA).extrair(ler_documento(str(caminho)))
+
+    assert resultado.valores["Problemas_Vinculados"] == "A corrupção de agentes públicos."
+    assert resultado.valores["Acoes_Criticas"] == "AC1: Levantar os requisitos comuns."
+    # A causa não tem rótulo no documento: fica vazia e é apontada, não some
+    # dentro da coluna de problemas.
+    assert resultado.valores["Causas_Criticas"] == ""
+    assert "Causas_Criticas" in resultado.nao_encontrados
+
+
+def test_anotacao_de_trabalho_vem_como_esta_na_ficha(tmp_path: Path):
+    """Anotação de quem preencheu ("AC 4,5,7,8") no fim da lista de problemas.
+
+    Reproduz E6-DU-PMelhoriaCond-C2. É texto digitado na ficha: o aplicativo
+    traz como está, e a limpeza é feita no documento. Só o que não tem
+    conteúdo algum (uma letra solta, um ponto) é separação entre itens.
+    """
+    pasta = tmp_path / "anotacao"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1-Inadequadas condições de acessibilidade\n"
+            "P2-Dificuldades nas condições de mobilidade\n"
+            "AC 4,5,7,810,12,13,14",
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, _ = processar_lote(listar_documentos(pasta), pasta)
+    assert [linha["Problemas_Vinculados"] for linha in registros["INICIATIVA"]] == [
+        "P1-Inadequadas condições de acessibilidade",
+        "P2-Dificuldades nas condições de mobilidade",
+        "AC 4,5,7,810,12,13,14",
+    ]
+
+
+def test_codigo_sozinho_na_celula_continua_valendo(tmp_path: Path):
+    """Célula que só tem "P1" é o que está na ficha, e vai para a planilha."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento, ["Problema(s) vinculado(s) ao Compromisso", "P1", "Ação(ões) Crítica(s)"]
+    )
+    caminho = tmp_path / "codigo.docx"
+    documento.save(caminho)
+
+    resultado = Extrator(INICIATIVA).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Problemas_Vinculados"] == "P1"
+    assert "Problemas_Vinculados" not in resultado.nao_encontrados
+
+
+def test_ligacao_solta_nao_mexe_em_campo_de_codigo(tmp_path: Path):
+    """A regra derruba letra solta e pontuação; sigla e código continuam."""
+    from extrator.parser import sem_ligacoes_soltas
+
+    assert sem_ligacoes_soltas("P1 Violência\ne\nP2 Racismo") == "P1 Violência\nP2 Racismo"
+    assert sem_ligacoes_soltas("P1 Violência\n.\nP2 Racismo") == "P1 Violência\nP2 Racismo"
+    # Texto com conteúdo, por mais curto ou codificado que seja, permanece.
+    for texto in ("AC 4,5,7,810,12,13,14", "C5P1,3CC12,13,16AC3", "P1", "Sedentarismo"):
+        assert sem_ligacoes_soltas(texto) == texto
+
+    documento = docx.Document()
+    _tabela_vertical(documento, ["ATRIBUTOS DA INICIATIVA"])
+    _tabela_grade(documento, [["Sigla do Órgão", "UO"], ["SSP", "20803"]])
+    caminho = tmp_path / "codigos.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INICIATIVA).extrair(ler_documento(str(caminho))).valores
+    assert valores["Responsavel_Sigla_Orgao"] == "SSP"
+    assert valores["Responsavel_UO"] == "20803"
+
+
+def test_ligacao_e_ponto_solto_separam_itens_em_vez_de_virar_item(tmp_path: Path):
+    """Lista escrita com "e" de ligação e um ponto de digitação no meio.
+
+    Nas fichas a lista às vezes vem "P1 ... / e / P2 ...", com o "e" sozinho na
+    linha, e às vezes sobra um "." solto de digitação. Os dois são separação
+    entre itens, não itens: não podem virar uma linha da planilha.
+    """
+    pasta = tmp_path / "ligacao"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1 Violência contra jovens negros\ne\nP2 Racismo institucional\n.\n"
+            "P3 Baixa escolaridade",
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, _ = processar_lote(listar_documentos(pasta), pasta)
+    assert [linha["Problemas_Vinculados"] for linha in registros["INICIATIVA"]] == [
+        "P1 Violência contra jovens negros",
+        "P2 Racismo institucional",
+        "P3 Baixa escolaridade",
+    ]
+
+
+def test_ponto_final_dentro_da_frase_nao_separa(tmp_path: Path):
+    """O ponto só é descartado quando está sozinho: frase não é picotada."""
+    pasta = tmp_path / "frase"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1 Baixa cobertura. A rede não alcança o interior. Faltam equipes.",
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, _ = processar_lote(listar_documentos(pasta), pasta)
+    linhas = registros["INICIATIVA"]
+    assert len(linhas) == 1
+    assert linhas[0]["Problemas_Vinculados"] == (
+        "P1 Baixa cobertura. A rede não alcança o interior. Faltam equipes."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Aviso de itens que remetem a outro item em vez de descrever um
+# ---------------------------------------------------------------------------
+def _ficha_com_anotacao(pasta: Path) -> None:
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        [
+            "Problema(s) vinculado(s) ao Compromisso",
+            "P1-Inadequadas condições de acessibilidade\nAC 4,5,7,810,12,13,14",
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+
+def test_item_sem_descricao_e_avisado_sem_sumir_da_planilha(tmp_path: Path):
+    """O texto continua na linha dele; o aviso só aponta a ficha a conferir."""
+    pasta = tmp_path / "aviso"
+    pasta.mkdir()
+    _ficha_com_anotacao(pasta)
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    linhas = registros["INICIATIVA"]
+
+    # O dado não some: a anotação ocupa a linha dela, como está na ficha.
+    assert [linha["Problemas_Vinculados"] for linha in linhas] == [
+        "P1-Inadequadas condições de acessibilidade",
+        "AC 4,5,7,810,12,13,14",
+    ]
+    for linha in linhas:
+        assert 'Problemas_Vinculados: 1 item sem descrição ("AC 4,5,7,810,12,13,14")' in (
+            linha["Observacoes"]
+        )
+    assert estatisticas.com_itens_sem_descricao["INICIATIVA"] == 1
+
+
+def test_ficha_sem_anotacao_nao_recebe_aviso(tmp_path: Path):
+    pasta = tmp_path / "limpa"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DA INICIATIVA"])
+    _tabela_vertical(
+        documento,
+        ["Problema(s) vinculado(s) ao Compromisso", "P1-Inadequadas condições"],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    assert "sem descrição" not in registros["INICIATIVA"][0]["Observacoes"]
+    assert estatisticas.com_itens_sem_descricao == {}
+
+
+def test_aviso_resume_quando_ha_muitos_itens():
+    from extrator.pipeline import itens_sem_descricao, _aviso_de_itens
+
+    registro = {"Causas_Criticas": "CC1\nCC2\nCC3\nCC4\nCausa de verdade"}
+    achados = itens_sem_descricao(registro, "\n")
+    assert [item for _, item in achados] == ["CC1", "CC2", "CC3", "CC4"]
+
+    aviso = _aviso_de_itens(achados)
+    assert aviso == (
+        'Causas_Criticas: 4 itens sem descrição ("CC1", "CC2", "CC3" e mais 1) '
+        "— conferir a ficha."
+    )
+
+
+def test_aviso_convive_com_o_de_campo_sem_valor(tmp_path: Path):
+    """Ficha com pendência e anotação recebe os dois avisos na mesma célula."""
+    pasta = tmp_path / "dois_avisos"
+    pasta.mkdir()
+    _ficha_com_anotacao(pasta)
+
+    linha = processar_lote(listar_documentos(pasta), pasta)[0]["INICIATIVA"][0]
+    assert "campo(s) sem valor" in linha["Observacoes"]
+    assert "sem descrição" in linha["Observacoes"]
+    assert linha["Status"] == "OK_COM_PENDENCIAS"

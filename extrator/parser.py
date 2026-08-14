@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 from .documento import Documento, No, Tabela
 from .modelos import MODELOS, ROTULOS_CONHECIDOS, Campo, Modelo
-from .texto import casa, chave, chaves, esta_marcado, juntar, limpar
+from .texto import casa, chave, esta_marcado, juntar, limpar
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,33 @@ _DIVISOR_INLINE = re.compile(r"^([^:\n]{2,80}?)\s*[:：]\s*(.+?)\s*(?:\n|$)")
 def eh_rotulo(texto: str) -> bool:
     """True se o texto é (apenas) um rótulo conhecido, e não um valor."""
     return casa(_REGEX_ROTULOS, texto)
+
+
+def tem_conteudo(texto: str, minimo: int = 1) -> bool:
+    """True se o texto é resposta de verdade, e não sujeira de formulário.
+
+    Descarta o que só tem pontuação (".", "-", "–") e, quando ``minimo`` é 2,
+    também o caractere solto. Esse caractere aparece muito nas fichas: caixas
+    de seleção desenhadas em fonte de símbolos guardam no texto uma letra
+    qualquer — o "e" que vinha parar na coluna de problemas.
+    """
+    return len(chave(texto)) >= minimo
+
+
+def sem_ligacoes_soltas(texto: str) -> str:
+    """Devolve o texto sem as linhas que separam itens em vez de descrever um.
+
+    Nas fichas, a lista costuma vir com o "e" de ligação sozinho na linha
+    antes do último item, e às vezes sobra um "." de digitação. Uma letra
+    solta ou só pontuação não é problema, causa, ação nem entrega: é separação
+    entre itens, e não pode virar uma linha da planilha.
+
+    O que tem conteúdo é preservado como está na ficha — inclusive as
+    anotações de trabalho de quem preencheu ("AC 4,5,7,810,12,13,14"): a
+    limpeza desse tipo de texto é feita no documento, não aqui.
+    """
+    linhas = [linha for linha in texto.split("\n") if tem_conteudo(linha, 2)]
+    return "\n".join(linhas).strip()
 
 
 def classificar(documento: Documento) -> Modelo | None:
@@ -175,18 +202,38 @@ class Extrator:
         return None
 
     def _extrair_por_rotulo(self, campo: Campo) -> tuple[str, bool]:
+        """Usa o primeiro rótulo que realmente **produz** um valor.
+
+        O mesmo rótulo costuma aparecer mais de uma vez na ficha: no quadro de
+        orientações de preenchimento (onde as células ao lado estão vazias ou
+        trazem só a instrução) e, adiante, na tabela preenchida. Parar no
+        primeiro deixava a coluna vazia justamente nas fichas que trazem o
+        quadro de orientações; por isso a busca continua pelas demais
+        ocorrências até encontrar conteúdo.
+
+        Campo cujo rótulo existe mas está **sem resposta** é reportado como não
+        encontrado, para aparecer em ``Campos_Nao_Encontrados`` em vez de sair
+        calado como uma célula em branco.
+        """
         candidatos = self._candidatos(campo)
         if not candidatos:
             return "", False
 
-        indice = min(campo.ocorrencia, len(candidatos) - 1)
-        no = candidatos[indice]
+        inicio = min(campo.ocorrencia, len(candidatos) - 1)
+        for no in candidatos[inicio:]:
+            valor = self._valor_do_rotulo(no, campo)
+            if valor:
+                return valor, True
+        return "", False
+
+    def _valor_do_rotulo(self, no: No, campo: Campo) -> str:
+        """Valor associado a uma ocorrência do rótulo (pode não haver)."""
         forma = self._forma_do_rotulo(self._regex(campo), no.texto)
 
         if forma == EMBUTIDO:
             valor = _DIVISOR_INLINE.match(no.texto).group(2)
-            if not eh_rotulo(valor):
-                return valor, True
+            if self._util(valor, campo) and not eh_rotulo(valor):
+                return valor
         elif forma == PRIMEIRA_LINHA:
             resto = no.texto.split("\n", 1)[1].strip()
             if not campo.multiplo:
@@ -194,35 +241,50 @@ class Extrator:
                 # fichas de controle, a contagem vem seguida da lista de
                 # códigos, que não faz parte do valor.
                 resto = next((l.strip() for l in resto.split("\n") if l.strip()), "")
-            if resto and not eh_rotulo(resto):
-                return resto, True
+            if self._util(resto, campo) and not eh_rotulo(resto):
+                return resto
 
         if no.tipo == "celula":
             tabela = self.documento.tabelas[no.tabela]
-            return self._valor_na_tabela(tabela, no, campo), True
-        return self._valor_apos_paragrafo(no, campo), True
+            return self._valor_na_tabela(tabela, no, campo)
+        return self._valor_apos_paragrafo(no, campo)
+
+    def _util(self, texto: str, campo: Campo) -> bool:
+        """True se o texto serve como valor deste campo.
+
+        Em campo de lista (``multiplo``) exige pelo menos dois caracteres
+        úteis: são as colunas onde a sujeira das caixas de seleção aparecia.
+        """
+        return tem_conteudo(texto, 2 if campo.multiplo else 1)
 
     def _valor_na_tabela(self, tabela: Tabela, no: No, campo: Campo) -> str:
         """Procura o valor à direita e, em seguida, abaixo do rótulo."""
         for texto in tabela.celulas_a_direita(no.linha, no.coluna):
-            if limpar(texto) and not eh_rotulo(texto):
+            if self._util(texto, campo) and not eh_rotulo(texto):
                 return texto
 
         abaixo = tabela.celulas_abaixo(no.linha, no.coluna)
         if not campo.multiplo:
             for texto in abaixo:
-                if limpar(texto) and not eh_rotulo(texto):
+                if self._util(texto, campo) and not eh_rotulo(texto):
                     return texto
             return ""
 
-        # Campo múltiplo: consome a coluna até o próximo rótulo conhecido.
+        # Campo múltiplo: consome a coluna até o próximo rótulo conhecido ou
+        # até a primeira célula vazia depois do valor. A célula vazia importa:
+        # há fichas em que o rótulo do campo seguinte foi apagado, restando a
+        # célula em branco, e sem essa parada a lista engolia o bloco de baixo
+        # (as causas críticas iam parar na coluna de problemas).
         itens: list[str] = []
         for texto in abaixo:
             if eh_rotulo(texto):
                 break
-            if limpar(texto):
-                itens.append(texto)
-        return self._unir_itens(itens)
+            if not self._util(texto, campo):
+                if itens:
+                    break
+                continue  # antes do valor, célula vazia é só espaçamento
+            itens.append(texto)
+        return self._unir_itens(itens, campo)
 
     def _valor_apos_paragrafo(self, no: No, campo: Campo) -> str:
         """Fallback para fichas escritas em parágrafos, sem tabelas."""
@@ -232,22 +294,27 @@ class Extrator:
                 break
             if eh_rotulo(seguinte.texto):
                 break
-            if limpar(seguinte.texto):
+            if self._util(seguinte.texto, campo):
                 itens.append(seguinte.texto)
                 if not campo.multiplo:
                     break
-        return self._unir_itens(itens)
+        return self._unir_itens(itens, campo)
 
-    def _unir_itens(self, itens: list[str]) -> str:
+    def _unir_itens(self, itens: list[str], campo: Campo | None = None) -> str:
         """Une itens de uma lista usando o separador configurado.
 
         Com um separador diferente de ``\\n``, as quebras de linha internas de
         uma célula também são convertidas: na ficha, várias causas/ações
         críticas costumam vir em uma única célula separadas por quebra manual,
         e quem escolhe ``--separador ponto-virgula`` espera "a; b; c".
+
+        Em campo de lista, as linhas que só ligam ou separam itens saem fora
+        (ver :func:`sem_ligacoes_soltas`).
         """
         if self.separador != "\n":
             itens = [linha for item in itens for linha in item.split("\n")]
+        if campo is not None and campo.multiplo:
+            itens = [texto for texto in map(sem_ligacoes_soltas, itens) if texto]
         return juntar(itens, self.separador)
 
     def _valor_por_padrao(self, padrao: str, secao: str | None) -> str:
