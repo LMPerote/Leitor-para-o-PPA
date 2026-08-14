@@ -248,7 +248,8 @@ Total dos Recursos: R$ 2.400.000,00
 
 * `Nome_Arquivo` / `Caminho_Relativo` — rastreabilidade até o documento de origem.
 * `Status` — `OK` (todos os rótulos localizados) ou `OK_COM_PENDENCIAS`.
-* `Campos_Nao_Encontrados` — colunas cujo rótulo não existe naquele documento.
+* `Campos_Nao_Encontrados` — colunas sem valor: o rótulo não existe naquele
+  documento ou existe sem resposta preenchida.
 * `Observacoes` — avisos do processamento.
 
 Arquivos corrompidos ou de tipo não reconhecido **não entram nas planilhas**:

@@ -37,7 +37,7 @@ def montar_relatorio(
                 "(um problema + causa crítica + ação crítica + entrega por linha)."
             )
         if pendentes:
-            linhas.append(f"  - {pendentes} com algum campo não localizado.")
+            linhas.append(f"  - {pendentes} com algum campo sem valor.")
         if modelo.codigo in destinos:
             linhas.append(f"  - planilha: {destinos[modelo.codigo]}")
 
@@ -56,7 +56,7 @@ def montar_relatorio(
         linhas.append("-" * LARGURA)
         linhas.append(
             f"Campos mais ausentes em {MODELOS_POR_CODIGO[codigo].rotulo} "
-            "(rótulo não localizado no documento):"
+            "(rótulo não localizado ou sem resposta preenchida):"
         )
         mais_ausentes = sorted(ausentes.items(), key=lambda item: -item[1])[:10]
         linhas += [f"  {contagem:>5}x  {coluna}" for coluna, contagem in mais_ausentes]

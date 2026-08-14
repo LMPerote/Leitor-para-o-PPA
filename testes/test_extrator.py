@@ -1171,3 +1171,114 @@ def test_ficha_de_controle_contagem_sem_dois_pontos(tmp_path: Path):
     valores = Extrator(CONTROLE).extrair(ler_documento(str(caminho))).valores
     assert valores["Qtd_Indicadores_Compromisso"] == "2"
     assert valores["Qtd_Fichas_Iniciativas"] == "2"
+
+
+# ---------------------------------------------------------------------------
+# Erros de captura do rótulo "Problema(s) vinculado(s) ao Compromisso"
+#
+# Os três casos vieram da conferência do acervo real: colunas de problema em
+# branco (com Status OK, sem aviso nenhum) e colunas preenchidas com sujeira.
+# ---------------------------------------------------------------------------
+def _ficha_com_quadro_de_orientacoes(destino: Path) -> Path:
+    """Ficha em que o rótulo aparece duas vezes na mesma seção.
+
+    A primeira ocorrência é o quadro de orientações de preenchimento, sem
+    resposta ao lado; a ficha preenchida vem logo depois.
+    """
+    documento = docx.Document()
+
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Problema(s) vinculado(s) ao Compromisso", ""),
+            ("Causa(s) Crítica(s)", ""),
+        ],
+    )
+    _tabela_horizontal(
+        documento,
+        [
+            ("Eixo", "Segurança Pública"),
+            ("Compromisso", "Fortalecer a Polícia Comunitária"),
+            ("Problema(s) vinculado(s) ao Compromisso", "P1 Violência urbana"),
+            ("Causa(s) Crítica(s)", "CC1 Baixa cobertura"),
+        ],
+    )
+    documento.save(destino)
+    return destino
+
+
+def test_rotulo_do_quadro_de_orientacoes_nao_esvazia_a_coluna(tmp_path: Path):
+    """A busca segue até a ocorrência que tem resposta."""
+    caminho = _ficha_com_quadro_de_orientacoes(tmp_path / "orientacoes.docx")
+    resultado = Extrator(INDICADOR).extrair(ler_documento(str(caminho)))
+
+    assert resultado.valores["Problemas_Vinculados"] == "P1 Violência urbana"
+    assert resultado.valores["Causas_Criticas"] == "CC1 Baixa cobertura"
+    assert "Problemas_Vinculados" not in resultado.nao_encontrados
+
+
+def test_caixa_de_selecao_nao_vira_problema(tmp_path: Path):
+    """Célula com um caractere solto ("e" de fonte de símbolos) não é valor."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Compromisso", "Compromisso qualquer"),
+            ("Problema(s) vinculado(s) ao Compromisso", "e"),
+            ("Causa(s) Crítica(s)", "."),
+        ],
+    )
+    caminho = tmp_path / "sujeira.docx"
+    documento.save(caminho)
+
+    resultado = Extrator(INDICADOR).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Problemas_Vinculados"] == ""
+    assert resultado.valores["Causas_Criticas"] == ""
+    # E o arquivo é apontado no relatório, em vez de sair calado.
+    assert "Problemas_Vinculados" in resultado.nao_encontrados
+    assert "Causas_Criticas" in resultado.nao_encontrados
+
+
+def test_rotulo_sem_resposta_entra_em_campos_nao_encontrados(tmp_path: Path):
+    """Rótulo presente e célula vazia: a ficha precisa aparecer como pendência."""
+    pasta = tmp_path / "sem_resposta"
+    pasta.mkdir()
+    documento = docx.Document()
+    _tabela_vertical(documento, ["VÍNCULO DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Compromisso", "Compromisso sem problema preenchido"),
+            ("Problema(s) vinculado(s) ao Compromisso", ""),
+        ],
+    )
+    documento.save(pasta / "ficha.docx")
+
+    registros, estatisticas = processar_lote(listar_documentos(pasta), pasta)
+    linha = registros["INDICADOR"][0]
+    assert linha["Problemas_Vinculados"] == ""
+    assert linha["Status"] == "OK_COM_PENDENCIAS"
+    assert "Problemas_Vinculados" in linha["Campos_Nao_Encontrados"]
+    assert estatisticas.campos_ausentes["INDICADOR"]["Problemas_Vinculados"] == 1
+
+
+def test_valor_curto_legitimo_continua_valendo(tmp_path: Path):
+    """A regra de sujeira não pode derrubar um valor curto de verdade."""
+    documento = docx.Document()
+    _tabela_vertical(documento, ["ATRIBUTOS DO INDICADOR DE COMPROMISSO"])
+    _tabela_horizontal(
+        documento,
+        [
+            ("Unidade de medida", "%"),
+            ("Valor da meta", "5"),
+            ("Sigla do Órgão", "SSP"),
+        ],
+    )
+    caminho = tmp_path / "curtos.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+    assert valores["Valor_Meta"] == "5"
+    assert valores["Responsavel_Sigla_Orgao"] == "SSP"

@@ -53,7 +53,10 @@ DESCRICOES_AUDITORIA: dict[str, str] = {
     COLUNA_ARQUIVO: "Nome do arquivo .docx de origem (rastreabilidade).",
     "Caminho_Relativo": "Caminho do arquivo em relação à pasta de entrada.",
     "Status": "OK, OK_COM_PENDENCIAS ou ERRO_DE_LEITURA.",
-    "Campos_Nao_Encontrados": "Colunas cujo rótulo não foi localizado no documento.",
+    "Campos_Nao_Encontrados": (
+        "Colunas sem valor: rótulo não localizado no documento ou localizado "
+        "sem resposta preenchida."
+    ),
     "Observacoes": "Mensagem de erro ou aviso gerado durante o processamento.",
 }
 

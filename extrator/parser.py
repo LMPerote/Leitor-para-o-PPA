@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 from .documento import Documento, No, Tabela
 from .modelos import MODELOS, ROTULOS_CONHECIDOS, Campo, Modelo
-from .texto import casa, chave, chaves, esta_marcado, juntar, limpar
+from .texto import casa, chave, esta_marcado, juntar, limpar
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,18 @@ _DIVISOR_INLINE = re.compile(r"^([^:\n]{2,80}?)\s*[:：]\s*(.+?)\s*(?:\n|$)")
 def eh_rotulo(texto: str) -> bool:
     """True se o texto é (apenas) um rótulo conhecido, e não um valor."""
     return casa(_REGEX_ROTULOS, texto)
+
+
+def tem_conteudo(texto: str, minimo: int = 1) -> bool:
+    """True se o texto é resposta de verdade, e não sujeira de formulário.
+
+    Descarta células que só têm pontuação (".", "-", "–") e, quando ``minimo``
+    é 2, também as de um caractere solto. Esse caractere aparece muito nas
+    fichas: caixas de seleção desenhadas em fonte de símbolos (Wingdings)
+    guardam no texto uma letra qualquer — o "e" que vinha parar na coluna de
+    problemas — e listas vazias às vezes ficam com um marcador órfão.
+    """
+    return len(chave(texto)) >= minimo
 
 
 def classificar(documento: Documento) -> Modelo | None:
@@ -175,18 +187,38 @@ class Extrator:
         return None
 
     def _extrair_por_rotulo(self, campo: Campo) -> tuple[str, bool]:
+        """Usa o primeiro rótulo que realmente **produz** um valor.
+
+        O mesmo rótulo costuma aparecer mais de uma vez na ficha: no quadro de
+        orientações de preenchimento (onde as células ao lado estão vazias ou
+        trazem só a instrução) e, adiante, na tabela preenchida. Parar no
+        primeiro deixava a coluna vazia justamente nas fichas que trazem o
+        quadro de orientações; por isso a busca continua pelas demais
+        ocorrências até encontrar conteúdo.
+
+        Campo cujo rótulo existe mas está **sem resposta** é reportado como não
+        encontrado, para aparecer em ``Campos_Nao_Encontrados`` em vez de sair
+        calado como uma célula em branco.
+        """
         candidatos = self._candidatos(campo)
         if not candidatos:
             return "", False
 
-        indice = min(campo.ocorrencia, len(candidatos) - 1)
-        no = candidatos[indice]
+        inicio = min(campo.ocorrencia, len(candidatos) - 1)
+        for no in candidatos[inicio:]:
+            valor = self._valor_do_rotulo(no, campo)
+            if valor:
+                return valor, True
+        return "", False
+
+    def _valor_do_rotulo(self, no: No, campo: Campo) -> str:
+        """Valor associado a uma ocorrência do rótulo (pode não haver)."""
         forma = self._forma_do_rotulo(self._regex(campo), no.texto)
 
         if forma == EMBUTIDO:
             valor = _DIVISOR_INLINE.match(no.texto).group(2)
-            if not eh_rotulo(valor):
-                return valor, True
+            if self._util(valor, campo) and not eh_rotulo(valor):
+                return valor
         elif forma == PRIMEIRA_LINHA:
             resto = no.texto.split("\n", 1)[1].strip()
             if not campo.multiplo:
@@ -194,24 +226,32 @@ class Extrator:
                 # fichas de controle, a contagem vem seguida da lista de
                 # códigos, que não faz parte do valor.
                 resto = next((l.strip() for l in resto.split("\n") if l.strip()), "")
-            if resto and not eh_rotulo(resto):
-                return resto, True
+            if self._util(resto, campo) and not eh_rotulo(resto):
+                return resto
 
         if no.tipo == "celula":
             tabela = self.documento.tabelas[no.tabela]
-            return self._valor_na_tabela(tabela, no, campo), True
-        return self._valor_apos_paragrafo(no, campo), True
+            return self._valor_na_tabela(tabela, no, campo)
+        return self._valor_apos_paragrafo(no, campo)
+
+    def _util(self, texto: str, campo: Campo) -> bool:
+        """True se o texto serve como valor deste campo.
+
+        Em campo de lista (``multiplo``) exige pelo menos dois caracteres
+        úteis: são as colunas onde a sujeira das caixas de seleção aparecia.
+        """
+        return tem_conteudo(texto, 2 if campo.multiplo else 1)
 
     def _valor_na_tabela(self, tabela: Tabela, no: No, campo: Campo) -> str:
         """Procura o valor à direita e, em seguida, abaixo do rótulo."""
         for texto in tabela.celulas_a_direita(no.linha, no.coluna):
-            if limpar(texto) and not eh_rotulo(texto):
+            if self._util(texto, campo) and not eh_rotulo(texto):
                 return texto
 
         abaixo = tabela.celulas_abaixo(no.linha, no.coluna)
         if not campo.multiplo:
             for texto in abaixo:
-                if limpar(texto) and not eh_rotulo(texto):
+                if self._util(texto, campo) and not eh_rotulo(texto):
                     return texto
             return ""
 
@@ -220,7 +260,7 @@ class Extrator:
         for texto in abaixo:
             if eh_rotulo(texto):
                 break
-            if limpar(texto):
+            if self._util(texto, campo):
                 itens.append(texto)
         return self._unir_itens(itens)
 
@@ -232,7 +272,7 @@ class Extrator:
                 break
             if eh_rotulo(seguinte.texto):
                 break
-            if limpar(seguinte.texto):
+            if self._util(seguinte.texto, campo):
                 itens.append(seguinte.texto)
                 if not campo.multiplo:
                     break

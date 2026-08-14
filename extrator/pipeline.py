@@ -100,7 +100,8 @@ def processar_arquivo(
         registro["Status"] = "OK_COM_PENDENCIAS"
         registro["Campos_Nao_Encontrados"] = "; ".join(resultado.nao_encontrados)
         registro["Observacoes"] = (
-            f"{len(resultado.nao_encontrados)} campo(s) não localizado(s) no documento."
+            f"{len(resultado.nao_encontrados)} campo(s) sem valor "
+            "(rótulo não localizado ou sem resposta preenchida)."
         )
         logger.debug(
             "'%s' (%s): campos não encontrados -> %s",
