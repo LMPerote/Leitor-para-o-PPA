@@ -47,6 +47,9 @@ EXATO, EMBUTIDO, PRIMEIRA_LINHA = 0, 1, 2
 #: diferentes versões do modelo.
 _REGEX_TOTAL = re.compile(r"total(dos)?recursos|totaldo?teto")
 
+#: Respostas da pergunta única de desagregação territorial, por chave canônica.
+_RESPOSTAS_SIM_NAO = {"sim": "Sim", "nao": "Não"}
+
 # Divisor "rótulo: valor" dentro de uma mesma célula/parágrafo (uma linha).
 _DIVISOR_INLINE = re.compile(r"^([^:\n]{2,80}?)\s*[:：]\s*(.+?)\s*(?:\n|$)")
 
@@ -54,6 +57,21 @@ _DIVISOR_INLINE = re.compile(r"^([^:\n]{2,80}?)\s*[:：]\s*(.+?)\s*(?:\n|$)")
 def eh_rotulo(texto: str) -> bool:
     """True se o texto é (apenas) um rótulo conhecido, e não um valor."""
     return casa(_REGEX_ROTULOS, texto)
+
+
+def anuncia_rotulo(texto: str) -> bool:
+    """True se o texto **anuncia** um rótulo conhecido, e não só o é.
+
+    Diferente de :func:`eh_rotulo`, reconhece as três formas do documento:
+    a célula com apenas o rótulo, o "Rótulo: valor" na mesma linha e o rótulo
+    na primeira linha com o valor abaixo.
+    """
+    if eh_rotulo(texto):
+        return True
+    partes = _DIVISOR_INLINE.match(texto)
+    if partes and eh_rotulo(partes.group(1)):
+        return True
+    return "\n" in texto and eh_rotulo(texto.split("\n", 1)[0])
 
 
 def tem_conteudo(texto: str, minimo: int = 1) -> bool:
@@ -133,9 +151,13 @@ class Extrator:
         for campo in self.modelo.campos:
             try:
                 if campo.extrator:
-                    # Extrator de tabela: não achar a tabela é não achar o rótulo.
-                    valor, encontrado = getattr(self, f"_extrair_{campo.extrator}")(campo)
-                    tinha_rotulo = encontrado
+                    devolvido = getattr(self, f"_extrair_{campo.extrator}")(campo)
+                    if len(devolvido) == 3:
+                        valor, encontrado, tinha_rotulo = devolvido
+                    else:
+                        # Extrator de tabela: não achar a tabela é não achar o rótulo.
+                        valor, encontrado = devolvido
+                        tinha_rotulo = encontrado
                 else:
                     valor, encontrado, tinha_rotulo = self._extrair_por_rotulo(campo)
             except Exception:  # pragma: no cover - blindagem por campo
@@ -282,6 +304,12 @@ class Extrator:
 
         abaixo = tabela.celulas_abaixo(no.linha, no.coluna)
         if not campo.multiplo:
+            # Aqui a parada é só no rótulo puro. Recusar toda célula que
+            # *anuncie* um rótulo derrubaria valor legítimo: a memória de
+            # cálculo, por exemplo, começa com "Valor de Referência: 6" em 170
+            # fichas — é conteúdo, não o campo seguinte. Por texto os dois
+            # casos são indistinguíveis, então quem precisa da regra estrita
+            # (a ficha de controle, de uma coluna só) a aplica no seu extrator.
             for texto in abaixo:
                 if self._util(texto, campo) and not eh_rotulo(texto):
                     return texto
@@ -403,6 +431,40 @@ class Extrator:
         registros = self._consolidar_linhas(self._linhas_da_tabela(tabela, linha_cabecalho))
         return juntar(registros, self.separador), True
 
+    def _extrair_compromisso_do_controle(self, campo: Campo) -> tuple[str, bool, bool]:
+        """Compromisso da ficha de controle, com apoio na posição.
+
+        Em parte das fichas o rótulo "COMPROMISSO" foi apagado e o texto do
+        compromisso escrito por cima da célula. O bloco tem ordem fixa —
+        diretório, eixo, programa, compromisso —, então, quando o rótulo não
+        existe, o compromisso é a primeira célula preenchida abaixo da do
+        "Programa" que não anuncie outro rótulo.
+        """
+        valor, encontrado, tinha_rotulo = self._extrair_por_rotulo(campo)
+        if encontrado and anuncia_rotulo(valor):
+            # A ficha de controle é de uma coluna só: com o compromisso em
+            # branco, a busca desce e encontra o campo seguinte, que vem como
+            # "RÓTULO: valor" na mesma célula. Vale só aqui — em outros
+            # modelos, valor que começa com "Rótulo: ..." é conteúdo legítimo.
+            valor, encontrado = "", False
+        if encontrado or tinha_rotulo:
+            # Rótulo presente: sem resposta é ficha em branco, não posição.
+            return valor, encontrado, tinha_rotulo
+
+        programa = Campo(coluna="", padroes=(r"programa",), secao=campo.secao)
+        for no in self._candidatos(programa):
+            if no.tipo != "celula":
+                continue
+            tabela = self.documento.tabelas[no.tabela]
+            for texto in tabela.celulas_abaixo(no.linha, no.coluna):
+                if not limpar(texto):
+                    continue
+                if anuncia_rotulo(texto):
+                    break  # chegou ao campo seguinte sem passar pelo compromisso
+                return texto, True, True
+            break
+        return "", False, False
+
     def _extrair_recursos_orcamentarios(self, campo: Campo) -> tuple[str, bool]:
         """Fontes de recurso mais a linha de "Total dos Recursos" que as fecha."""
         localizacao = self._linha_com_rotulo(campo.secao, r"codigoda?fonte")
@@ -483,12 +545,54 @@ class Extrator:
                 itens.append(texto)
         return self._unir_itens(itens)
 
+    def _resposta_sim_ou_nao(self) -> tuple[str, bool]:
+        """Resposta da variante "Desagregação territorial/regional (sim ou não?)".
+
+        Parte das fichas troca o par de caixas "Estado / Território de
+        Identidade" por uma pergunta única, respondida com uma marca ao lado de
+        "Sim" ou de "Não". Sem ler essa resposta, a seção inteira saía vazia —
+        e ainda era reportada como rótulo ausente, quando na verdade a ficha
+        respondeu que não há desagregação (por isso o resto do bloco está em
+        branco).
+        """
+        achados = [
+            (no, _RESPOSTAS_SIM_NAO[chave(no.texto)])
+            for no in self.documento.nos_da_secao("TERRITORIAL")
+            if no.tipo == "celula" and chave(no.texto) in _RESPOSTAS_SIM_NAO
+        ]
+        if not achados:
+            return "", False
+        if len(achados) == 1:
+            # Só a opção escolhida ficou no documento.
+            return achados[0][1], True
+
+        # As duas opções aparecem: vale a que está marcada, na própria célula
+        # ou na vizinha (a marca fica ora antes, ora depois do texto).
+        for no, resposta in achados:
+            celulas = self.documento.tabelas[no.tabela].linha_de_celulas(no.linha)
+            colunas = [coluna for coluna, _ in celulas]
+            if no.coluna not in colunas:  # pragma: no cover - grade irregular
+                continue
+            posicao = colunas.index(no.coluna)
+            vizinhas = [
+                celulas[j][1] for j in (posicao - 1, posicao + 1) if 0 <= j < len(celulas)
+            ]
+            if esta_marcado(no.texto) or any(esta_marcado(t) for t in vizinhas):
+                return resposta, True
+        return achados[0][1], True
+
     def _extrair_desagregacao_territorial(self, campo: Campo) -> tuple[str, bool]:
         """Consolida toda a seção de desagregação territorial em uma célula."""
         estado, encontrada = self._marcacao(r"estado")
         territorio, _ = self._marcacao(r"territoriode?identidade")
 
+        resposta = ""
+        if not encontrada:
+            # Modelo sem o par de caixas: a pergunta é uma só.
+            resposta, encontrada = self._resposta_sim_ou_nao()
+
         itens = [
+            ("Desagregação territorial/regional", resposta),
             ("Estado", estado),
             ("Território de Identidade", territorio),
             (

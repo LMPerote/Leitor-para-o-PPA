@@ -1588,3 +1588,167 @@ def test_relatorio_separa_rotulo_ausente_de_ficha_em_branco(tmp_path: Path):
 
     quadro = montar_dataframe(registros["INICIATIVA"], MODELOS_POR_CODIGO["INICIATIVA"])
     assert not [c for c in quadro.columns if c.startswith("_")]
+
+
+def test_desagregacao_com_pergunta_unica_sim_ou_nao(tmp_path: Path):
+    """Variante do bloco territorial usada nas fichas do E9-IL.
+
+    No lugar do par de caixas "Estado / Território de Identidade", a ficha faz
+    uma pergunta só. Respondida "Não", o resto do bloco fica em branco — e o
+    aplicativo reportava a seção como rótulo ausente, jogando fora a única
+    informação que existia ali.
+    """
+    documento = docx.Document()
+    _tabela_grade(
+        documento,
+        [
+            [
+                "Bloco 3: DESAGREGAÇÃO TERRITORIAL\n"
+                "Desagregação territorial/regional (Opção: sim ou não?)",
+                "",
+                "",
+            ],
+            ["", "x", "Não"],
+            ["Fórmula de cálculo Territorial", "", "Unidade de Medida"],
+            ["", "", ""],
+            ["Território de Identidade", "Memória de Cálculo Territorial", "Meta Territorial"],
+            ["", "", ""],
+        ],
+    )
+    caminho = tmp_path / "territorial_variante.docx"
+    documento.save(caminho)
+
+    resultado = Extrator(INDICADOR).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Desagregacao_Territorial"] == (
+        "Desagregação territorial/regional: Não"
+    )
+    assert "Desagregacao_Territorial" not in resultado.nao_encontrados
+    assert "Desagregacao_Territorial" not in resultado.rotulos_ausentes
+
+
+def test_desagregacao_com_as_duas_opcoes_usa_a_marcada(tmp_path: Path):
+    """Quando "Sim" e "Não" aparecem, vale a que está marcada."""
+    documento = docx.Document()
+    _tabela_grade(
+        documento,
+        [
+            ["Bloco 3: DESAGREGAÇÃO TERRITORIAL\nDesagregação territorial/regional?", "", "", ""],
+            ["Sim", "x", "Não", ""],
+            ["Território de Identidade", "Memória de Cálculo Territorial", "Meta Territorial", ""],
+            ["Metropolitano", "Soma regional", "10", ""],
+        ],
+    )
+    caminho = tmp_path / "territorial_duas_opcoes.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+    assert "Desagregação territorial/regional: Sim" in valores["Desagregacao_Territorial"]
+    # E a tabela de territórios continua sendo lida.
+    assert "Metropolitano" in valores["Desagregacao_Territorial"]
+
+
+def test_modelo_padrao_nao_ganha_a_pergunta_unica(pasta: Path):
+    """A ficha com o par de caixas segue exatamente como era."""
+    valores = Extrator(INDICADOR).extrair(
+        ler_documento(str(pasta / "ficha_indicador.docx"))
+    ).valores
+    assert valores["Desagregacao_Territorial"].startswith("Estado: Sim")
+    assert "Desagregação territorial/regional" not in valores["Desagregacao_Territorial"]
+
+
+def _controle(tmp_path: Path, nome: str, linhas: list[str]) -> Path:
+    documento = docx.Document()
+    tabela = documento.add_table(rows=len(linhas), cols=1)
+    for indice, texto in enumerate(linhas):
+        tabela.cell(indice, 0).text = texto
+    caminho = tmp_path / nome
+    documento.save(caminho)
+    return caminho
+
+
+def test_compromisso_do_controle_com_rotulo_apagado(tmp_path: Path):
+    """Quem preencheu escreveu o compromisso por cima do rótulo "COMPROMISSO".
+
+    Reproduz `Ficha C2.docx`, `Ficha DR C1.docx` e mais duas: a célula existe
+    e tem o texto, mas não há rótulo para ancorar. A ficha de controle tem
+    ordem fixa, então o compromisso é lido pela posição.
+    """
+    caminho = _controle(
+        tmp_path,
+        "controle_sem_rotulo.docx",
+        [
+            "NOME DO DIRETÓRIO DO COMPROMISSO: \nE12-SP-PSegPubDefesaSocial- C2",
+            "EIXO: \nSP- Segurança Pública",
+            "PROGRAMA: \nSEGURANÇA PÚBLICA E DEFESA SOCIAL",
+            "Aprimorar o enfrentamento à criminalidade violenta",  # rótulo apagado
+            "NOME DIGITADOR(A) FIPLAN: \nFernanda",
+            "N° de Fichas de INDICADORES: \n2",
+        ],
+    )
+    resultado = Extrator(CONTROLE).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Compromisso"] == (
+        "Aprimorar o enfrentamento à criminalidade violenta"
+    )
+    assert "Compromisso" not in resultado.nao_encontrados
+
+
+def test_compromisso_em_branco_nao_puxa_o_campo_de_baixo(tmp_path: Path):
+    """Com o rótulo presente e sem resposta, a posição não entra em ação."""
+    caminho = _controle(
+        tmp_path,
+        "controle_em_branco.docx",
+        [
+            "NOME DO DIRETÓRIO DO COMPROMISSO: \nE1-ASGD-C1",
+            "PROGRAMA: \nAssistência Social",
+            "COMPROMISSO",  # rótulo presente, resposta nenhuma
+            "NOME DIGITADOR(A) FIPLAN: \nFulana",
+        ],
+    )
+    resultado = Extrator(CONTROLE).extrair(ler_documento(str(caminho)))
+    assert resultado.valores["Compromisso"] == ""
+    assert "Compromisso" in resultado.nao_encontrados
+    # E não em rotulos_ausentes: o rótulo está lá, a ficha é que está vazia.
+    assert "Compromisso" not in resultado.rotulos_ausentes
+
+
+def test_controle_com_rotulo_normal_continua_igual(tmp_path: Path):
+    caminho = _controle(
+        tmp_path,
+        "controle_normal.docx",
+        [
+            "PROGRAMA: \nEnergia para o desenvolvimento",
+            "COMPROMISSO \nExpandir o acesso à energia elétrica",
+            "NOME DIGITADOR(A) FIPLAN: \nFernanda Tojo",
+        ],
+    )
+    valores = Extrator(CONTROLE).extrair(ler_documento(str(caminho))).valores
+    assert valores["Compromisso"] == "Expandir o acesso à energia elétrica"
+
+
+def test_valor_que_comeca_com_rotulo_e_conteudo_legitimo(tmp_path: Path):
+    """A memória de cálculo começa com "Valor de Referência: 6" em 170 fichas.
+
+    É conteúdo, não o campo seguinte. Recusar toda célula que *anuncie* um
+    rótulo derrubava esse valor no acervo inteiro — por texto os dois casos
+    são indistinguíveis, então a regra estrita fica só onde foi verificada
+    (a ficha de controle, de uma coluna só).
+    """
+    documento = docx.Document()
+    _tabela_vertical(documento, ["ATRIBUTOS DO INDICADOR DE COMPROMISSO"])
+    _tabela_vertical(
+        documento,
+        [
+            "Memória de Cálculo",
+            "Valor de Referência: 6\nValor da Meta: 40 (meta para o quadriênio)",
+            "Unidade de medida",
+            "Unidade",
+        ],
+    )
+    caminho = tmp_path / "memoria.docx"
+    documento.save(caminho)
+
+    valores = Extrator(INDICADOR).extrair(ler_documento(str(caminho))).valores
+    assert valores["Memoria_Calculo"] == (
+        "Valor de Referência: 6\nValor da Meta: 40 (meta para o quadriênio)"
+    )
+    assert valores["Unidade_Medida"] == "Unidade"
